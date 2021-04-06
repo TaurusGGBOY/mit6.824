@@ -6,9 +6,11 @@ import "os"
 import "net/rpc"
 import "net/http"
 
-
+// TODO 这个Coordinator有什么好定义的？
 type Coordinator struct {
 	// Your definitions here.
+	workers []worker
+	reduceTasks []int
 
 }
 
@@ -45,8 +47,9 @@ func (c *Coordinator) server() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 //
+// TODO 维护一个任务列表
 func (c *Coordinator) Done() bool {
-	ret := false
+	ret := true
 
 	// Your code here.
 
@@ -59,6 +62,9 @@ func (c *Coordinator) Done() bool {
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
 //
+// TODO 输入是一个文件列表和reduce任务数量？ 返回一个Coordinator
+// 是我这边coordinator进行分割？
+// 还是说这个已经分割好了 直接可以分发给worker？
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 
@@ -68,3 +74,4 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.server()
 	return &c
 }
+
