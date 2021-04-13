@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sort"
+	"strconv"
+	"strings"
+	"unicode"
 )
 import "log"
 import "net/rpc"
@@ -28,21 +32,35 @@ type MapAndReduceWorker struct {
 type TaskPhase int
 
 const (
-	mapPhase    TaskPhase = 0
-	reducePhase TaskPhase = 1
+	mapPhase     TaskPhase = 0
+	reducePhase  TaskPhase = 1
+	waitingPhase TaskPhase = 1
 )
 
 // 添加了Task结构体
 type Task struct {
-	fileName string
-	phase    TaskPhase
-	nReduce  int
-	alive    bool
+	fileName   string
+	taskNumber int
+	phase      TaskPhase
+	nReduce    int
+	nMap int
+	alive      bool
 }
 
 type RequestWorker struct {
 	id int
 }
+
+type ResponseTaskReply struct {
+	state int
+}
+
+type ByKey []KeyValue
+
+// for sorting by key.
+func (a ByKey) Len() int           { return len(a) }
+func (a ByKey) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByKey) Less(i, j int) bool { return a[i].Key < a[j].Key }
 
 //
 // use ihash(key) % NReduce to choose the reduce
@@ -136,16 +154,83 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 	kva := w.mapf(t.fileName, string(content))
 
 	// 将map结果按照hash的结果放在slice中
-	reduce := make([][]KeyValue,t.nReduce)
+	reduce := make([][]KeyValue, t.nReduce)
 	for _, kv := range kva {
-		reduce[ihash(kv.Key)&(t.nReduce-1)]=append(reduce[ihash(kv.Key)&t.nReduce], kv)
+		reduce[ihash(kv.Key)&(t.nReduce-1)] = append(reduce[ihash(kv.Key)&t.nReduce], kv)
 	}
 
-	// TODO 将这个slice写成文件输出就可以了 命名是什么%v %v
+	// 将这个slice写成文件输出就可以了 命名是什么%v %v
+	for index, ys := range reduce {
+		if len(ys) > 0 {
+			reduceFileName := "mr-" + strconv.Itoa(t.taskNumber) + "-" + strconv.Itoa(index)
+			ofile, _ := os.Create(reduceFileName)
+			for _, y := range ys {
+				fmt.Fprintf(ofile, "%v %v\n", y.Key, y.Value)
+			}
+			ofile.Close()
+		}
+	}
+
+	// TODO向coordinator报告已经处理完毕
+	w.responseTask(t)
 }
 
 func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	// TODO reduce是将hash相同的处理了还是说是根据任务分配的？
+
+	file, err := os.Open(t.fileName)
+	if err != nil {
+		log.Fatalf("cannot open %v", t.fileName)
+	}
+	content, err := ioutil.ReadAll(file)
+	if err != nil {
+		log.Fatalf("cannot read %v", t.fileName)
+	}
+	file.Close()
+
+	// TODO 将读取的content转换为KeyValue
+	ff := func(r rune) bool { return !unicode.IsLetter(r) }
+
+	// split contents into an array of words.
+	words := strings.FieldsFunc(string(content), ff)
+
+	intermediate := []KeyValue{}
+	for _, w := range words {
+		kvArr := strings.Split(w, " ")
+		kv := KeyValue{kvArr[0], kvArr[1]}
+		intermediate = append(intermediate, kv)
+	}
+
+	// TODO 给intermediate排序
+	sort.Sort(ByKey(intermediate))
+
+	// TODO 再按照mapf的代码来
+	oname := "mr-out-" + strconv.Itoa(t.taskNumber)
+	ofile, _ := os.Create(oname)
+	i := 0
+	for i < len(intermediate) {
+		j := i + 1
+		for j < len(intermediate) && intermediate[j].Key == intermediate[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, intermediate[k].Value)
+		}
+		output := w.reducef(intermediate[i].Key, values)
+
+		// this is the correct format for each line of Reduce output.
+		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
+		i = j
+	}
+	ofile.Close()
+
+	w.responseTask(t)
+}
+
+func (w *MapAndReduceWorker) responseTask(t Task) {
+	reply := ResponseTaskReply{}
+	call("coordinator.responseTask", t, &reply)
 }
 
 //
