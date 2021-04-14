@@ -1,6 +1,13 @@
 package mr
 
-import "log"
+import (
+	"fmt"
+	"io/ioutil"
+	"log"
+	"strconv"
+	"strings"
+	"unicode"
+)
 import "net"
 import "os"
 import "net/rpc"
@@ -9,12 +16,12 @@ import "net/http"
 // TODO 这个Coordinator有什么好定义的？
 type Coordinator struct {
 	// Your definitions here.
-	mapTasks                   map[string]map[int]int
-	reduceTasks                map[string]map[int]int
+	mapTasks                   map[int]string
+	reduceTasks                map[int]string
 	reduceTaskNumber           int
-	mapWaitingResponseQueue    map[string]map[int]int
-	reduceWaitingResponseQueue map[string]map[int]int
-	mapTaskNumber              int
+	mapWaitingResponseQueue    map[int]string
+	reduceWaitingResponseQueue map[int]string
+	singleFileWordNumber       int
 	phase                      TaskPhase
 }
 
@@ -31,27 +38,22 @@ func (c *Coordinator) requestTask(args *RequestWorker, t *Task) error {
 		return nil
 	}
 	if c.phase == mapPhase {
-		for filename, tasks := range c.mapTasks {
-			for _, value := range tasks {
-				t.phase = c.phase
-				t.fileName = filename
-				t.taskNumber = value
-				t.alive = true
-				t.nMap = c.mapTaskNumber
-				break
-			}
+		for taskNumber, filename := range c.mapTasks {
+			t.phase = c.phase
+			t.fileName = filename
+			t.taskNumber = taskNumber
+			t.alive = true
+			t.nMap = c.singleFileWordNumber
 			break
 		}
 	} else if c.phase == reducePhase {
-		for filename, tasks := range c.reduceTasks {
-			for _, value := range tasks {
-				t.phase = c.phase
-				t.fileName = filename
-				t.taskNumber = value
-				t.alive = true
-				t.nReduce = c.reduceTaskNumber
-				break
-			}
+		// TODO 对于reduce来说 直接给一个Y让他读取所有的X-Y吗？
+		for taskNumber, filename := range c.reduceTasks {
+			t.phase = c.phase
+			t.fileName = filename
+			t.taskNumber = taskNumber
+			t.alive = true
+			t.nReduce = c.reduceTaskNumber
 			break
 		}
 	}
@@ -61,18 +63,12 @@ func (c *Coordinator) requestTask(args *RequestWorker, t *Task) error {
 // 响应任务
 func (c *Coordinator) responseTask(args *Task, reply *ResponseTaskReply) error {
 	if args.phase == mapPhase {
-		delete(c.mapWaitingResponseQueue[args.fileName], args.taskNumber)
-		if len(c.mapWaitingResponseQueue[args.fileName]) == 0 {
-			delete(c.mapWaitingResponseQueue, args.fileName)
-		}
+		delete(c.mapWaitingResponseQueue, args.taskNumber)
 		if len(c.mapWaitingResponseQueue) == 0 {
 			c.phase = reducePhase
 		}
 	} else if args.phase == reducePhase {
-		delete(c.reduceWaitingResponseQueue[args.fileName], args.taskNumber)
-		if len(c.reduceWaitingResponseQueue[args.fileName]) == 0 {
-			delete(c.reduceWaitingResponseQueue, args.fileName)
-		}
+		delete(c.reduceWaitingResponseQueue, args.taskNumber)
 	}
 	return nil
 }
@@ -122,15 +118,58 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
 
 	// Your code here.
-	c.mapTaskNumber = 100
+	c.singleFileWordNumber = 4000
 	c.reduceTaskNumber = nReduce
 	c.phase = mapPhase
-	c.mapTasks = map[string]map[int]int{}
-	c.reduceTasks = map[string]map[int]int{}
-	c.mapWaitingResponseQueue = map[string]map[int]int{}
-	c.reduceWaitingResponseQueue = map[string]map[int]int{}
-	// TODO 对files里面的文件进行分割
+	c.mapTasks = map[int]string{}
+	c.reduceTasks = map[int]string{}
+	c.mapWaitingResponseQueue = map[int]string{}
+	c.reduceWaitingResponseQueue = map[int]string{}
+	// 对files里面的文件进行分割
+	// 记录第几个count
+	count := 0
+	oname := "pg-"
+	midWords := []string{}
+	number := 0
+	reduceFileName := ""
 
+	for _, filename := range files {
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", filename)
+		}
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", filename)
+		}
+		file.Close()
+		// function to detect word separators.
+		ff := func(r rune) bool { return !unicode.IsLetter(r) }
+		// split contents into an array of words.
+		words := strings.FieldsFunc(string(content), ff)
+
+		// 将每个文件分成10个小块
+		for _, word := range words {
+			midWords = append(midWords, word)
+			if len(midWords) >= c.singleFileWordNumber {
+				number = (count - 1) / c.singleFileWordNumber
+				reduceFileName = oname + strconv.Itoa(number)
+				c.reduceTasks[number] = reduceFileName
+				ofile, _ := os.Create(reduceFileName)
+				fmt.Fprintf(ofile, "%v ", midWords)
+				midWords = make([]string, 0)
+			}
+			count = count + 1
+		}
+
+	}
+	if len(midWords) >= 0 {
+		number = count / c.singleFileWordNumber
+		reduceFileName = oname + strconv.Itoa(number)
+		c.reduceTasks[number] = reduceFileName
+		ofile, _ := os.Create(oname + strconv.Itoa(count/c.singleFileWordNumber))
+		fmt.Fprintf(ofile, "%v ", midWords)
+	}
 	c.server()
 	return &c
 }
