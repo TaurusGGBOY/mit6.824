@@ -128,7 +128,7 @@ func (w *MapAndReduceWorker) requestTask() Task {
 	args.Id = w.Id
 	t := Task{}
 	call("Coordinator.RequestTask", &args, &t)
-	defer log.Printf("接收到分配的的请求 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", w.Id,t.TaskNumber,t.FileName)
+	defer log.Printf("接收到分配的的请求 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", w.Id, t.TaskNumber, t.FileName)
 	return t
 }
 
@@ -162,6 +162,9 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 
 	// 将map结果按照hash的结果放在slice中
 	reduce := make([][]KeyValue, t.NReduce)
+	for index := range reduce {
+		reduce[index] = make([]KeyValue, 0)
+	}
 	for _, kv := range kva {
 		reduce[ihash(kv.Key)&(t.NReduce-1)] = append(reduce[ihash(kv.Key)&(t.NReduce-1)], kv)
 	}
