@@ -107,9 +107,9 @@ func (w *MapAndReduceWorker) register() {
 
 func (w *MapAndReduceWorker) run() {
 	// 一个循环
+	CallExample()
 	for {
 		// 循环请求任务
-		CallExample()
 		t := w.requestTask()
 		if !t.Alive {
 			fmt.Printf("not Alive, quit")
@@ -125,7 +125,7 @@ func (w *MapAndReduceWorker) requestTask() Task {
 	args := RequestWorker{}
 	args.Id = w.Id
 	t := Task{}
-	call("coordinator.requestTask", &args, &t)
+	call("Coordinator.RequestTask", &args, &t)
 	return t
 }
 
@@ -233,7 +233,7 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 
 func (w *MapAndReduceWorker) responseTask(t Task) {
 	reply := ResponseTaskReply{}
-	call("coordinator.responseTask", t, &reply)
+	call("Coordinator.ResponseTask", t, &reply)
 }
 
 //
@@ -251,6 +251,7 @@ func CallExample() {
 
 	// declare a reply structure.
 	reply := ExampleReply{}
+	log.Printf("开始Example")
 
 	// send the RPC request, wait for the reply.
 	// rpcname：注册的类名.方法名

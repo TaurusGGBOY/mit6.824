@@ -33,7 +33,7 @@ type Coordinator struct {
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-func (c *Coordinator) requestTask(t *Task) error {
+func (c *Coordinator) RequestTask(t *Task) error {
 	if c.Done() {
 		t.Alive = false
 		return nil
@@ -67,7 +67,7 @@ func (c *Coordinator) requestTask(t *Task) error {
 }
 
 // 响应任务
-func (c *Coordinator) responseTask(args *Task, reply *ResponseTaskReply) error {
+func (c *Coordinator) ResponseTask(args *Task, reply *ResponseTaskReply) error {
 	if args.Phase == MapPhase {
 		delete(c.mapWaitingResponseQueue, args.TaskNumber)
 		if len(c.mapWaitingResponseQueue) == 0 {
