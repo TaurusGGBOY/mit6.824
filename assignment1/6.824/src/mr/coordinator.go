@@ -83,7 +83,7 @@ func (c *Coordinator) ResponseTask(args *Task, reply *ResponseTaskReply) error {
 	defer lock.Unlock()
 	if args.Phase == MapPhase {
 		delete(c.mapWaitingResponseQueue, args.TaskNumber)
-		if len(c.mapWaitingResponseQueue) == 0 {
+		if len(c.mapTasks) == 0 && len(c.mapWaitingResponseQueue) == 0 {
 			c.phase = ReducePhase
 		}
 	} else if args.Phase == ReducePhase {
@@ -200,7 +200,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	}
 	// 给reduce添加任务
 	for i := 0; i < nReduce; i++ {
-		c.reduceTasks[i] = "mr-reduce-"+strconv.Itoa(i)
+		c.reduceTasks[i] = "mr-reduce-" + strconv.Itoa(i)
 	}
 	log.Printf("mapTask有任务：%d,reduceTask有任务:%d", len(c.mapTasks), len(c.reduceTasks))
 	log.Printf("开始监听……")

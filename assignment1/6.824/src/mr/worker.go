@@ -195,12 +195,11 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		filename := "mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(t.TaskNumber)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("cannot open %v", t.FileName)
-			continue
+			log.Printf("cannot open %v", filename)
 		}
 		content, err := ioutil.ReadAll(file)
 		if err != nil {
-			log.Fatalf("cannot read %v", t.FileName)
+			log.Printf("cannot read %v", filename)
 			continue
 		}
 		file.Close()
