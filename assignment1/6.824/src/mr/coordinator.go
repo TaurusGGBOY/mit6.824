@@ -38,10 +38,10 @@ type Coordinator struct {
 // the RPC argument and reply types are defined in rpc.go.
 //
 func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
-	log.Printf("收到worker的请求 id为：%v", args.Id)
-	defer log.Printf("处理worker的请求结束 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", args.Id, t.TaskNumber, t.FileName)
+	//log.Printf("收到worker的请求 id为：%v", args.Id)
+	//defer log.Printf("处理worker的请求结束 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", args.Id, t.TaskNumber, t.FileName)
 	if c.Done() {
-		log.Printf("所有任务完成")
+		//log.Printf("所有任务完成")
 		t.Alive = false
 		return nil
 	}
@@ -85,8 +85,8 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 // 响应任务
 func (c *Coordinator) ResponseTask(args *Task, reply *ResponseTaskReply) error {
 	lock.Lock()
-	log.Printf("收到work完成报告 文件名：%v 任务号：%v", args.FileName, args.TaskNumber)
-	log.Printf("mapTask有任务：%d,reduceTask有任务:%d，waitingmap:%d，waitingreduce:%d", len(c.mapTasks), len(c.reduceTasks), len(c.mapWaitingResponseQueue), len(c.reduceWaitingResponseQueue))
+	//log.Printf("收到work完成报告 文件名：%v 任务号：%v", args.FileName, args.TaskNumber)
+	//log.Printf("mapTask有任务：%d,reduceTask有任务:%d，waitingmap:%d，waitingreduce:%d", len(c.mapTasks), len(c.reduceTasks), len(c.mapWaitingResponseQueue), len(c.reduceWaitingResponseQueue))
 
 	defer lock.Unlock()
 	if args.Phase == MapPhase {
@@ -210,8 +210,8 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	for i := 0; i < nReduce; i++ {
 		c.reduceTasks[i] = "mr-reduce-" + strconv.Itoa(i)
 	}
-	log.Printf("mapTask有任务：%d,reduceTask有任务:%d", len(c.mapTasks), len(c.reduceTasks))
-	log.Printf("开始监听……")
+	//log.Printf("mapTask有任务：%d,reduceTask有任务:%d", len(c.mapTasks), len(c.reduceTasks))
+	//log.Printf("开始监听……")
 	c.server()
 	return &c
 }
