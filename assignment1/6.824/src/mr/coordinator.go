@@ -27,6 +27,7 @@ type Coordinator struct {
 	singleFileWordNumber       int
 	totalMapTasks              int
 	phase                      TaskPhase
+	assignWorkerID             int
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -94,6 +95,12 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+func (c *Coordinator) Register(args *RequestWorker, reply *RequestWorker) error {
+	reply.Id = c.assignWorkerID
+	c.assignWorkerID = c.assignWorkerID + 1
+	return nil
+}
+
 //
 // start a thread that listens for RPCs from worker.go
 //
@@ -145,6 +152,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c.reduceTasks = map[int]string{}
 	c.mapWaitingResponseQueue = map[int]string{}
 	c.reduceWaitingResponseQueue = map[int]string{}
+	c.assignWorkerID = 0
 	// 对files里面的文件进行分割
 	// 记录第几个count
 	count := 0
