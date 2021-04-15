@@ -64,12 +64,12 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 		}
 	} else if c.phase == ReducePhase {
 		// TODO 对于reduce来说 直接给一个Y让他读取所有的X-Y吗？
+		t.Phase = c.phase
+		t.Alive = true
+		t.NMap = c.totalMapTasks
+		t.NReduce = c.reduceTaskNumber
 		if(len(c.reduceTasks)== 0) {
-			t.Phase = c.phase
 			t.TaskNumber = -1
-			t.Alive = true
-			t.NMap = c.totalMapTasks
-			t.NReduce = c.reduceTaskNumber
 		}
 		for taskNumber, filename := range c.reduceTasks {
 			t.FileName = filename
