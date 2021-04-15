@@ -6,12 +6,15 @@ import (
 	"log"
 	"strconv"
 	"strings"
+	"sync"
 	"unicode"
 )
 import "net"
 import "os"
 import "net/rpc"
 import "net/http"
+
+var lock sync.Mutex
 
 // TODO 这个Coordinator有什么好定义的？
 type Coordinator struct {
@@ -34,6 +37,8 @@ type Coordinator struct {
 // the RPC argument and reply types are defined in rpc.go.
 //
 func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
+	lock.Lock()
+	defer lock.Unlock()
 	if c.Done() {
 		t.Alive = false
 		return nil
@@ -68,6 +73,8 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 
 // 响应任务
 func (c *Coordinator) ResponseTask(args *Task, reply *ResponseTaskReply) error {
+	lock.Lock()
+	defer lock.Unlock()
 	if args.Phase == MapPhase {
 		delete(c.mapWaitingResponseQueue, args.TaskNumber)
 		if len(c.mapWaitingResponseQueue) == 0 {
