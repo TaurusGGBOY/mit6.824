@@ -41,6 +41,7 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 	lock.Lock()
 	defer lock.Unlock()
 	log.Printf("收到worker的请求 id为：%v", args.Id)
+	defer log.Printf("处理worker的请求结束 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", args.Id,t.TaskNumber,t.FileName)
 	if c.Done() {
 		t.Alive = false
 		return nil
@@ -124,7 +125,6 @@ func (c *Coordinator) server() {
 
 func (c *Coordinator) Done() bool {
 	lock.Lock()
-	log.Printf("任务已全部完成")
 	defer lock.Unlock()
 
 	if len(c.mapTasks) == 0 && len(c.reduceTasks) == 0 && len(c.mapWaitingResponseQueue) == 0 && len(c.reduceWaitingResponseQueue) == 0 {

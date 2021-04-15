@@ -109,7 +109,6 @@ func (w *MapAndReduceWorker) register() {
 
 func (w *MapAndReduceWorker) run() {
 	// 一个循环
-	CallExample()
 	for {
 		// 循环请求任务
 		t := w.requestTask()
@@ -124,14 +123,17 @@ func (w *MapAndReduceWorker) run() {
 }
 
 func (w *MapAndReduceWorker) requestTask() Task {
+	log.Printf("woker开始请求 id为：%v", w.Id)
 	args := RequestWorker{}
 	args.Id = w.Id
 	t := Task{}
 	call("Coordinator.RequestTask", &args, &t)
+	defer log.Printf("接收到分配的的请求 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", w.Id,t.TaskNumber,t.FileName)
 	return t
 }
 
 func (w *MapAndReduceWorker) doTask(t Task) {
+	log.Printf("woker开始分配任务 id为：%v", w.Id)
 	if t.Phase == MapPhase {
 		w.doMapTask(t)
 	} else if t.Phase == ReducePhase {
