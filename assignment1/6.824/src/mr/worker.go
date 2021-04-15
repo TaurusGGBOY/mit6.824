@@ -218,7 +218,7 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	}
 	// TODO 给intermediate排序
 	sort.Sort(ByKey(intermediate))
-
+	log.Printf("intermedia大小：%d", len(intermediate))
 	// TODO 再按照mapf的代码来
 	oname := "mr-out-" + strconv.Itoa(t.TaskNumber)
 	ofile, _ := os.Create(oname)
