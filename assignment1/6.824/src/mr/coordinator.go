@@ -33,7 +33,7 @@ type Coordinator struct {
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-func (c *Coordinator) RequestTask(t *Task) error {
+func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 	if c.Done() {
 		t.Alive = false
 		return nil
