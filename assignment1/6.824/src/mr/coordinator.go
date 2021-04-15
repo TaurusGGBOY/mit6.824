@@ -182,7 +182,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 			if len(midWords) >= c.singleFileWordNumber {
 				c.totalMapTasks = (count - 1) / c.singleFileWordNumber
 				reduceFileName = oname + strconv.Itoa(c.totalMapTasks)
-				c.reduceTasks[c.totalMapTasks] = reduceFileName
+				c.mapTasks[c.totalMapTasks] = reduceFileName
 				ofile, _ := os.Create(reduceFileName)
 				fmt.Fprintf(ofile, "%v ", midWords)
 				midWords = make([]string, 0)
@@ -194,7 +194,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	if len(midWords) >= 0 {
 		c.totalMapTasks = count / c.singleFileWordNumber
 		reduceFileName = oname + strconv.Itoa(c.totalMapTasks)
-		c.reduceTasks[c.totalMapTasks] = reduceFileName
+		c.mapTasks[c.totalMapTasks] = reduceFileName
 		ofile, _ := os.Create(oname + strconv.Itoa(count/c.singleFileWordNumber))
 		fmt.Fprintf(ofile, "%v ", midWords)
 	}
