@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"unicode"
 )
 import "log"
 import "net/rpc"
@@ -204,14 +203,13 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 			continue
 		}
 		file.Close()
-		ff := func(r rune) bool { return !unicode.IsLetter(r) }
 		// 将读取的content转换为KeyValue
 		// split contents into an array of words.
-		words := strings.FieldsFunc(string(content), ff)
+		lines := strings.Split(string(content), "\n")
 		if i == 0 {
-			log.Printf("words行数：%d, words[0]:%v", len(words), words[0])
+			log.Printf("words行数：%d, words[0]:%v,words[1]:%v", len(lines), lines[0], lines[1])
 		}
-		for _, w := range words {
+		for _, w := range lines {
 			kvArr := strings.Split(w, " ")
 			if len(kvArr) <= 1 {
 				continue
