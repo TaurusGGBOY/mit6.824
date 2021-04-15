@@ -196,6 +196,7 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		file, err := os.Open(filename)
 		if err != nil {
 			log.Printf("cannot open %v", filename)
+			continue
 		}
 		content, err := ioutil.ReadAll(file)
 		if err != nil {
