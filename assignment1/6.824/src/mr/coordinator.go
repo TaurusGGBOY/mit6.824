@@ -48,32 +48,37 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 	lock.Lock()
 	defer lock.Unlock()
 	if c.phase == MapPhase {
+		t.Phase = c.phase
+		t.Alive = true
+		t.NMap = c.singleFileWordNumber
+		t.NReduce = c.reduceTaskNumber
+		if len(c.mapTasks) == 0 {
+			t.TaskNumber = -1
+		}
 		for taskNumber, filename := range c.mapTasks {
-			t.Phase = c.phase
 			t.FileName = filename
 			t.TaskNumber = taskNumber
-			t.Alive = true
-			t.NMap = c.singleFileWordNumber
-			t.NReduce = c.reduceTaskNumber
+			delete(c.mapTasks, t.TaskNumber)
+			c.mapWaitingResponseQueue[t.TaskNumber] = t.FileName
 			break
 		}
-		delete(c.mapTasks, t.TaskNumber)
-		c.mapWaitingResponseQueue[t.TaskNumber] = t.FileName
 	} else if c.phase == ReducePhase {
 		// TODO 对于reduce来说 直接给一个Y让他读取所有的X-Y吗？
-		for taskNumber, filename := range c.reduceTasks {
+		if(len(c.reduceTasks)== 0) {
 			t.Phase = c.phase
-			t.FileName = filename
-			t.TaskNumber = taskNumber
+			t.TaskNumber = -1
 			t.Alive = true
 			t.NMap = c.totalMapTasks
 			t.NReduce = c.reduceTaskNumber
+		}
+		for taskNumber, filename := range c.reduceTasks {
+			t.FileName = filename
+			t.TaskNumber = taskNumber
+			delete(c.reduceTasks, t.TaskNumber)
+			c.reduceWaitingResponseQueue[t.TaskNumber] = t.FileName
 			break
 		}
-		delete(c.reduceTasks, t.TaskNumber)
-		c.reduceWaitingResponseQueue[t.TaskNumber] = t.FileName
 	}
-
 	return nil
 }
 
@@ -81,7 +86,7 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 func (c *Coordinator) ResponseTask(args *Task, reply *ResponseTaskReply) error {
 	lock.Lock()
 	log.Printf("收到work完成报告 文件名：%v 任务号：%v", args.FileName, args.TaskNumber)
-	log.Printf("mapTask有任务：%d,reduceTask有任务:%d，waitingmap:%d，waitingreduce:%d", len(c.mapTasks), len(c.reduceTasks),len(c.mapWaitingResponseQueue),len(c.reduceWaitingResponseQueue))
+	log.Printf("mapTask有任务：%d,reduceTask有任务:%d，waitingmap:%d，waitingreduce:%d", len(c.mapTasks), len(c.reduceTasks), len(c.mapWaitingResponseQueue), len(c.reduceWaitingResponseQueue))
 
 	defer lock.Unlock()
 	if args.Phase == MapPhase {

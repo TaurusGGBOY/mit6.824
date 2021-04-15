@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 import "log"
 import "net/rpc"
@@ -111,6 +112,10 @@ func (w *MapAndReduceWorker) run() {
 	for {
 		// 循环请求任务
 		t := w.requestTask()
+		if(t.TaskNumber==-1) {
+			time.Sleep(time.Duration(5)*time.Second)
+			continue
+		}
 		if !t.Alive {
 			fmt.Printf("not Alive, quit")
 			return
