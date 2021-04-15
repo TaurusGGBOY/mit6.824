@@ -109,6 +109,7 @@ func (w *MapAndReduceWorker) run() {
 	// 一个循环
 	for {
 		// 循环请求任务
+		CallExample()
 		t := w.requestTask()
 		if !t.Alive {
 			fmt.Printf("not Alive, quit")
@@ -257,6 +258,7 @@ func CallExample() {
 
 	// reply.Y should be 100.
 	fmt.Printf("reply.Y %v\n", reply.Y)
+	log.Printf("reply.Y %v\n", reply.Y)
 }
 
 //
