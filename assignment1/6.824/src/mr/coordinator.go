@@ -41,7 +41,7 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 	lock.Lock()
 	defer lock.Unlock()
 	log.Printf("收到worker的请求 id为：%v", args.Id)
-	defer log.Printf("处理worker的请求结束 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", args.Id,t.TaskNumber,t.FileName)
+	defer log.Printf("处理worker的请求结束 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", args.Id, t.TaskNumber, t.FileName)
 	if c.Done() {
 		t.Alive = false
 		return nil
@@ -198,6 +198,11 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		ofile, _ := os.Create(oname + strconv.Itoa(count/c.singleFileWordNumber))
 		fmt.Fprintf(ofile, "%v ", midWords)
 	}
+	// 给reduce添加任务
+	for i := 0; i < nReduce; i++ {
+		c.reduceTasks[i] = "mr-reduce-"+strconv.Itoa(i)
+	}
+	log.Printf("mapTask有任务：%d,reduceTask有任务:%d", len(c.mapTasks), len(c.reduceTasks))
 	log.Printf("开始监听……")
 	c.server()
 	return &c
