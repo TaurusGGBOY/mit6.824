@@ -113,6 +113,9 @@ func (c *Coordinator) server() {
 //
 
 func (c *Coordinator) Done() bool {
+	lock.Lock()
+	defer lock.Unlock()
+
 	if len(c.mapTasks) == 0 && len(c.reduceTasks) == 0 && len(c.mapWaitingResponseQueue) == 0 && len(c.reduceWaitingResponseQueue) == 0 {
 		return true
 	}
