@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"github.com/satori/go.uuid"
 )
 import "log"
 import "net/rpc"
@@ -91,7 +92,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	w := MapAndReduceWorker{}
 	w.Mapf = mapf
 	w.Reducef = reducef
-
+	w.Id,_ = uuid.NewV4()
 	// 注册
 	w.register()
 	// 运行
@@ -141,7 +142,8 @@ func (w *MapAndReduceWorker) doTask(t Task) {
 
 func (w *MapAndReduceWorker) doMapTask(t Task) {
 	// 读取文件
-
+	log.Printf("worker正在完成Map任务 文件名：%v 任务号 %v", t.FileName,t.TaskNumber)
+	defer log.Printf("worker已完成Map任务 文件名：%v 任务号 %v", t.FileName,t.TaskNumber)
 	file, err := os.Open(t.FileName)
 	if err != nil {
 		log.Fatalf("cannot open %v", t.FileName)
@@ -179,6 +181,8 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 
 func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	// TODO reduce是将hash相同的处理了还是说是根据任务分配的？
+	log.Printf("worker正在完成Reduce任务 文件名：%v 任务号 %v", t.FileName,t.TaskNumber)
+	defer log.Printf("worker已完成Reduce任务 文件名：%v 任务号 %v", t.FileName,t.TaskNumber)
 	intermediate := []KeyValue{}
 
 	for i := 0; i <= t.NMap; i++ {

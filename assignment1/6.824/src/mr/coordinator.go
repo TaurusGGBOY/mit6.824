@@ -39,6 +39,7 @@ type Coordinator struct {
 func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 	lock.Lock()
 	defer lock.Unlock()
+	log.Printf("收到worker的请求 id为：%v", args.Id)
 	if c.Done() {
 		t.Alive = false
 		return nil
@@ -68,12 +69,14 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 		delete(c.reduceTasks, t.TaskNumber)
 		c.reduceWaitingResponseQueue[t.TaskNumber] = t.FileName
 	}
+
 	return nil
 }
 
 // 响应任务
 func (c *Coordinator) ResponseTask(args *Task, reply *ResponseTaskReply) error {
 	lock.Lock()
+	log.Printf("收到work完成报告 文件名：%v 任务号：%v", args.FileName, args.TaskNumber)
 	defer lock.Unlock()
 	if args.Phase == MapPhase {
 		delete(c.mapWaitingResponseQueue, args.TaskNumber)
@@ -114,6 +117,7 @@ func (c *Coordinator) server() {
 
 func (c *Coordinator) Done() bool {
 	lock.Lock()
+	log.Printf("任务已全部完成")
 	defer lock.Unlock()
 
 	if len(c.mapTasks) == 0 && len(c.reduceTasks) == 0 && len(c.mapWaitingResponseQueue) == 0 && len(c.reduceWaitingResponseQueue) == 0 {
