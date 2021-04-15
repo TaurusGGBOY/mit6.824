@@ -53,6 +53,7 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 			t.TaskNumber = taskNumber
 			t.Alive = true
 			t.NMap = c.singleFileWordNumber
+			t.NReduce = c.reduceTaskNumber
 			break
 		}
 		delete(c.mapTasks, t.TaskNumber)
