@@ -38,14 +38,14 @@ type Coordinator struct {
 // the RPC argument and reply types are defined in rpc.go.
 //
 func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
-	lock.Lock()
-	defer lock.Unlock()
 	log.Printf("收到worker的请求 id为：%v", args.Id)
 	defer log.Printf("处理worker的请求结束 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", args.Id, t.TaskNumber, t.FileName)
 	if c.Done() {
 		t.Alive = false
 		return nil
 	}
+	lock.Lock()
+	defer lock.Unlock()
 	if c.phase == MapPhase {
 		for taskNumber, filename := range c.mapTasks {
 			t.Phase = c.phase
@@ -124,6 +124,8 @@ func (c *Coordinator) server() {
 //
 
 func (c *Coordinator) Done() bool {
+	lock.Lock()
+	defer lock.Unlock()
 	if len(c.mapTasks) == 0 && len(c.reduceTasks) == 0 && len(c.mapWaitingResponseQueue) == 0 && len(c.reduceWaitingResponseQueue) == 0 {
 		return true
 	}
