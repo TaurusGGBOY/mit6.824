@@ -208,6 +208,9 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		// 将读取的content转换为KeyValue
 		// split contents into an array of words.
 		words := strings.FieldsFunc(string(content), ff)
+		if i == 0 {
+			log.Printf("words行数：%d, words[0]:%v", len(words), words[0])
+		}
 		for _, w := range words {
 			kvArr := strings.Split(w, " ")
 			if len(kvArr) <= 1 {
