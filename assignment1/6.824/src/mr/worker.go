@@ -163,7 +163,7 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 	// 将map结果按照hash的结果放在slice中
 	reduce := make([][]KeyValue, t.NReduce)
 	for _, kv := range kva {
-		reduce[ihash(kv.Key)&(t.NReduce-1)] = append(reduce[ihash(kv.Key)&t.NReduce], kv)
+		reduce[ihash(kv.Key)&(t.NReduce-1)] = append(reduce[ihash(kv.Key)&(t.NReduce-1)], kv)
 	}
 
 	// 将这个slice写成文件输出就可以了 命名是什么%v %v
