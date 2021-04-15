@@ -43,7 +43,7 @@ type Task struct {
 	taskNumber int
 	phase      TaskPhase
 	nReduce    int
-	nMap int
+	nMap       int
 	alive      bool
 }
 
@@ -102,7 +102,7 @@ func Worker(mapf func(string, string) []KeyValue,
 }
 
 func (w *MapAndReduceWorker) register() {
-	//向coordinator发送注册rpc
+	//TODO 向coordinator发送注册rpc
 }
 
 func (w *MapAndReduceWorker) run() {
@@ -177,30 +177,31 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 
 func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	// TODO reduce是将hash相同的处理了还是说是根据任务分配的？
-
-	file, err := os.Open(t.fileName)
-	if err != nil {
-		log.Fatalf("cannot open %v", t.fileName)
-	}
-	content, err := ioutil.ReadAll(file)
-	if err != nil {
-		log.Fatalf("cannot read %v", t.fileName)
-	}
-	file.Close()
-
-	// TODO 将读取的content转换为KeyValue
-	ff := func(r rune) bool { return !unicode.IsLetter(r) }
-
-	// split contents into an array of words.
-	words := strings.FieldsFunc(string(content), ff)
-
 	intermediate := []KeyValue{}
-	for _, w := range words {
-		kvArr := strings.Split(w, " ")
-		kv := KeyValue{kvArr[0], kvArr[1]}
-		intermediate = append(intermediate, kv)
-	}
 
+	for i := 0; i <= t.nMap; i++ {
+		filename := "mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(t.taskNumber)
+		file, err := os.Open(filename)
+		if err != nil {
+			log.Fatalf("cannot open %v", t.fileName)
+			continue
+		}
+		content, err := ioutil.ReadAll(file)
+		if err != nil {
+			log.Fatalf("cannot read %v", t.fileName)
+			continue
+		}
+		file.Close()
+		ff := func(r rune) bool { return !unicode.IsLetter(r) }
+		// 将读取的content转换为KeyValue
+		// split contents into an array of words.
+		words := strings.FieldsFunc(string(content), ff)
+		for _, w := range words {
+			kvArr := strings.Split(w, " ")
+			kv := KeyValue{kvArr[0], kvArr[1]}
+			intermediate = append(intermediate, kv)
+		}
+	}
 	// TODO 给intermediate排序
 	sort.Sort(ByKey(intermediate))
 

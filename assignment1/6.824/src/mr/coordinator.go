@@ -22,6 +22,7 @@ type Coordinator struct {
 	mapWaitingResponseQueue    map[int]string
 	reduceWaitingResponseQueue map[int]string
 	singleFileWordNumber       int
+	totalMapTasks              int
 	phase                      TaskPhase
 }
 
@@ -46,6 +47,8 @@ func (c *Coordinator) requestTask(args *RequestWorker, t *Task) error {
 			t.nMap = c.singleFileWordNumber
 			break
 		}
+		delete(c.mapTasks, t.taskNumber)
+		c.mapWaitingResponseQueue[t.taskNumber] = t.fileName
 	} else if c.phase == reducePhase {
 		// TODO 对于reduce来说 直接给一个Y让他读取所有的X-Y吗？
 		for taskNumber, filename := range c.reduceTasks {
@@ -53,9 +56,12 @@ func (c *Coordinator) requestTask(args *RequestWorker, t *Task) error {
 			t.fileName = filename
 			t.taskNumber = taskNumber
 			t.alive = true
+			t.nMap = c.totalMapTasks
 			t.nReduce = c.reduceTaskNumber
 			break
 		}
+		delete(c.reduceTasks, t.taskNumber)
+		c.reduceWaitingResponseQueue[t.taskNumber] = t.fileName
 	}
 	return nil
 }
@@ -130,7 +136,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	count := 0
 	oname := "pg-"
 	midWords := []string{}
-	number := 0
+	c.totalMapTasks = 0
 	reduceFileName := ""
 
 	for _, filename := range files {
@@ -152,9 +158,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		for _, word := range words {
 			midWords = append(midWords, word)
 			if len(midWords) >= c.singleFileWordNumber {
-				number = (count - 1) / c.singleFileWordNumber
-				reduceFileName = oname + strconv.Itoa(number)
-				c.reduceTasks[number] = reduceFileName
+				c.totalMapTasks = (count - 1) / c.singleFileWordNumber
+				reduceFileName = oname + strconv.Itoa(c.totalMapTasks)
+				c.reduceTasks[c.totalMapTasks] = reduceFileName
 				ofile, _ := os.Create(reduceFileName)
 				fmt.Fprintf(ofile, "%v ", midWords)
 				midWords = make([]string, 0)
@@ -164,9 +170,9 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 
 	}
 	if len(midWords) >= 0 {
-		number = count / c.singleFileWordNumber
-		reduceFileName = oname + strconv.Itoa(number)
-		c.reduceTasks[number] = reduceFileName
+		c.totalMapTasks = count / c.singleFileWordNumber
+		reduceFileName = oname + strconv.Itoa(c.totalMapTasks)
+		c.reduceTasks[c.totalMapTasks] = reduceFileName
 		ofile, _ := os.Create(oname + strconv.Itoa(count/c.singleFileWordNumber))
 		fmt.Fprintf(ofile, "%v ", midWords)
 	}
