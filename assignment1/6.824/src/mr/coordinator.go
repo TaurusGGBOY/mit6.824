@@ -33,48 +33,48 @@ type Coordinator struct {
 //
 // the RPC argument and reply types are defined in rpc.go.
 //
-func (c *Coordinator) requestTask(args *RequestWorker, t *Task) error {
+func (c *Coordinator) requestTask(t *Task) error {
 	if c.Done() {
-		t.alive = false
+		t.Alive = false
 		return nil
 	}
-	if c.phase == mapPhase {
+	if c.phase == MapPhase {
 		for taskNumber, filename := range c.mapTasks {
-			t.phase = c.phase
-			t.fileName = filename
-			t.taskNumber = taskNumber
-			t.alive = true
-			t.nMap = c.singleFileWordNumber
+			t.Phase = c.phase
+			t.FileName = filename
+			t.TaskNumber = taskNumber
+			t.Alive = true
+			t.NMap = c.singleFileWordNumber
 			break
 		}
-		delete(c.mapTasks, t.taskNumber)
-		c.mapWaitingResponseQueue[t.taskNumber] = t.fileName
-	} else if c.phase == reducePhase {
+		delete(c.mapTasks, t.TaskNumber)
+		c.mapWaitingResponseQueue[t.TaskNumber] = t.FileName
+	} else if c.phase == ReducePhase {
 		// TODO 对于reduce来说 直接给一个Y让他读取所有的X-Y吗？
 		for taskNumber, filename := range c.reduceTasks {
-			t.phase = c.phase
-			t.fileName = filename
-			t.taskNumber = taskNumber
-			t.alive = true
-			t.nMap = c.totalMapTasks
-			t.nReduce = c.reduceTaskNumber
+			t.Phase = c.phase
+			t.FileName = filename
+			t.TaskNumber = taskNumber
+			t.Alive = true
+			t.NMap = c.totalMapTasks
+			t.NReduce = c.reduceTaskNumber
 			break
 		}
-		delete(c.reduceTasks, t.taskNumber)
-		c.reduceWaitingResponseQueue[t.taskNumber] = t.fileName
+		delete(c.reduceTasks, t.TaskNumber)
+		c.reduceWaitingResponseQueue[t.TaskNumber] = t.FileName
 	}
 	return nil
 }
 
 // 响应任务
 func (c *Coordinator) responseTask(args *Task, reply *ResponseTaskReply) error {
-	if args.phase == mapPhase {
-		delete(c.mapWaitingResponseQueue, args.taskNumber)
+	if args.Phase == MapPhase {
+		delete(c.mapWaitingResponseQueue, args.TaskNumber)
 		if len(c.mapWaitingResponseQueue) == 0 {
-			c.phase = reducePhase
+			c.phase = ReducePhase
 		}
-	} else if args.phase == reducePhase {
-		delete(c.reduceWaitingResponseQueue, args.taskNumber)
+	} else if args.Phase == ReducePhase {
+		delete(c.reduceWaitingResponseQueue, args.TaskNumber)
 	}
 	return nil
 }
@@ -115,7 +115,7 @@ func (c *Coordinator) Done() bool {
 //
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
-// nReduce is the number of reduce tasks to use.
+// NReduce is the number of reduce tasks to use.
 //
 // TODO 输入是一个文件列表和reduce任务数量？ 返回一个Coordinator
 // 是我这边coordinator进行分割？
@@ -126,7 +126,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// Your code here.
 	c.singleFileWordNumber = 4000
 	c.reduceTaskNumber = nReduce
-	c.phase = mapPhase
+	c.phase = MapPhase
 	c.mapTasks = map[int]string{}
 	c.reduceTasks = map[int]string{}
 	c.mapWaitingResponseQueue = map[int]string{}

@@ -23,36 +23,36 @@ type KeyValue struct {
 
 // 添加了mapAndReduceWorker结构体
 type MapAndReduceWorker struct {
-	id      int
-	mapf    func(string, string) []KeyValue
-	reducef func(string, []string) string
+	Id      int
+	Mapf    func(string, string) []KeyValue
+	Reducef func(string, []string) string
 }
 
 // 枚举阶段
 type TaskPhase int
 
 const (
-	mapPhase     TaskPhase = 0
-	reducePhase  TaskPhase = 1
-	waitingPhase TaskPhase = 1
+	MapPhase     TaskPhase = 0
+	ReducePhase  TaskPhase = 1
+	WaitingPhase TaskPhase = 1
 )
 
 // 添加了Task结构体
 type Task struct {
-	fileName   string
-	taskNumber int
-	phase      TaskPhase
-	nReduce    int
-	nMap       int
-	alive      bool
+	FileName   string
+	TaskNumber int
+	Phase      TaskPhase
+	NReduce    int
+	NMap       int
+	Alive      bool
 }
 
 type RequestWorker struct {
-	id int
+	Id int
 }
 
 type ResponseTaskReply struct {
-	state int
+	State int
 }
 
 type ByKey []KeyValue
@@ -89,8 +89,8 @@ func Worker(mapf func(string, string) []KeyValue,
 	// TODO 自己写rpc
 	// 然后运行map任务？但是reduce任务？
 	w := MapAndReduceWorker{}
-	w.mapf = mapf
-	w.reducef = reducef
+	w.Mapf = mapf
+	w.Reducef = reducef
 
 	// 注册
 	w.register()
@@ -110,8 +110,8 @@ func (w *MapAndReduceWorker) run() {
 	for {
 		// 循环请求任务
 		t := w.requestTask()
-		if !t.alive {
-			fmt.Printf("not alive, quit")
+		if !t.Alive {
+			fmt.Printf("not Alive, quit")
 			return
 		}
 		w.doTask(t)
@@ -122,16 +122,16 @@ func (w *MapAndReduceWorker) run() {
 
 func (w *MapAndReduceWorker) requestTask() Task {
 	args := RequestWorker{}
-	args.id = w.id
+	args.Id = w.Id
 	t := Task{}
 	call("coordinator.requestTask", &args, &t)
 	return t
 }
 
 func (w *MapAndReduceWorker) doTask(t Task) {
-	if t.phase == mapPhase {
+	if t.Phase == MapPhase {
 		w.doMapTask(t)
-	} else if t.phase == reducePhase {
+	} else if t.Phase == ReducePhase {
 		w.doReduceTask(t)
 	} else {
 		fmt.Printf("do task error/n")
@@ -140,29 +140,29 @@ func (w *MapAndReduceWorker) doTask(t Task) {
 
 func (w *MapAndReduceWorker) doMapTask(t Task) {
 	// 读取文件
-	file, err := os.Open(t.fileName)
+	file, err := os.Open(t.FileName)
 	if err != nil {
-		log.Fatalf("cannot open %v", t.fileName)
+		log.Fatalf("cannot open %v", t.FileName)
 	}
 	content, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Fatalf("cannot read %v", t.fileName)
+		log.Fatalf("cannot read %v", t.FileName)
 	}
 	file.Close()
 
 	//运行map
-	kva := w.mapf(t.fileName, string(content))
+	kva := w.Mapf(t.FileName, string(content))
 
 	// 将map结果按照hash的结果放在slice中
-	reduce := make([][]KeyValue, t.nReduce)
+	reduce := make([][]KeyValue, t.NReduce)
 	for _, kv := range kva {
-		reduce[ihash(kv.Key)&(t.nReduce-1)] = append(reduce[ihash(kv.Key)&t.nReduce], kv)
+		reduce[ihash(kv.Key)&(t.NReduce-1)] = append(reduce[ihash(kv.Key)&t.NReduce], kv)
 	}
 
 	// 将这个slice写成文件输出就可以了 命名是什么%v %v
 	for index, ys := range reduce {
 		if len(ys) > 0 {
-			reduceFileName := "mr-" + strconv.Itoa(t.taskNumber) + "-" + strconv.Itoa(index)
+			reduceFileName := "mr-" + strconv.Itoa(t.TaskNumber) + "-" + strconv.Itoa(index)
 			ofile, _ := os.Create(reduceFileName)
 			for _, y := range ys {
 				fmt.Fprintf(ofile, "%v %v\n", y.Key, y.Value)
@@ -179,16 +179,16 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	// TODO reduce是将hash相同的处理了还是说是根据任务分配的？
 	intermediate := []KeyValue{}
 
-	for i := 0; i <= t.nMap; i++ {
-		filename := "mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(t.taskNumber)
+	for i := 0; i <= t.NMap; i++ {
+		filename := "mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(t.TaskNumber)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("cannot open %v", t.fileName)
+			log.Fatalf("cannot open %v", t.FileName)
 			continue
 		}
 		content, err := ioutil.ReadAll(file)
 		if err != nil {
-			log.Fatalf("cannot read %v", t.fileName)
+			log.Fatalf("cannot read %v", t.FileName)
 			continue
 		}
 		file.Close()
@@ -206,7 +206,7 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	sort.Sort(ByKey(intermediate))
 
 	// TODO 再按照mapf的代码来
-	oname := "mr-out-" + strconv.Itoa(t.taskNumber)
+	oname := "mr-out-" + strconv.Itoa(t.TaskNumber)
 	ofile, _ := os.Create(oname)
 	i := 0
 	for i < len(intermediate) {
@@ -218,7 +218,7 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		for k := i; k < j; k++ {
 			values = append(values, intermediate[k].Value)
 		}
-		output := w.reducef(intermediate[i].Key, values)
+		output := w.Reducef(intermediate[i].Key, values)
 
 		// this is the correct format for each line of Reduce output.
 		fmt.Fprintf(ofile, "%v %v\n", intermediate[i].Key, output)
