@@ -127,17 +127,17 @@ func (w *MapAndReduceWorker) run() {
 }
 
 func (w *MapAndReduceWorker) requestTask() Task {
-	log.Printf("woker开始请求 id为：%v", w.Id)
+	//log.Printf("woker开始请求 id为：%v", w.Id)
 	args := RequestWorker{}
 	args.Id = w.Id
 	t := Task{}
 	call("Coordinator.RequestTask", &args, &t)
-	defer log.Printf("接收到分配的的请求 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", w.Id, t.TaskNumber, t.FileName)
+	//defer log.Printf("接收到分配的的请求 id为：%v,分配的任务符号为:%v，分配的文件名为:%v", w.Id, t.TaskNumber, t.FileName)
 	return t
 }
 
 func (w *MapAndReduceWorker) doTask(t Task) {
-	log.Printf("woker开始分配任务 id为：%v", w.Id)
+	//log.Printf("woker开始分配任务 id为：%v", w.Id)
 	if t.Phase == MapPhase {
 		w.doMapTask(t)
 	} else if t.Phase == ReducePhase {
@@ -149,8 +149,8 @@ func (w *MapAndReduceWorker) doTask(t Task) {
 
 func (w *MapAndReduceWorker) doMapTask(t Task) {
 	// 读取文件
-	log.Printf("worker正在完成Map任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
-	defer log.Printf("worker已完成Map任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
+	//log.Printf("worker正在完成Map任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
+	//defer log.Printf("worker已完成Map任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
 	file, err := os.Open(t.FileName)
 	if err != nil {
 		log.Fatalf("cannot open %v", t.FileName)
@@ -191,8 +191,8 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 
 func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	// TODO reduce是将hash相同的处理了还是说是根据任务分配的？
-	log.Printf("worker正在完成Reduce任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
-	defer log.Printf("worker已完成Reduce任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
+	//log.Printf("worker正在完成Reduce任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
+	//defer log.Printf("worker已完成Reduce任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
 	intermediate := []KeyValue{}
 
 	for i := 0; i <= t.NMap; i++ {
@@ -211,9 +211,9 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		// 将读取的content转换为KeyValue
 		// split contents into an array of words.
 		lines := strings.Split(string(content), "\n")
-		if i == 0 {
-			log.Printf("words行数：%d, words[0]:%v,words[1]:%v", len(lines), lines[0], lines[1])
-		}
+		//if i == 0 {
+		//	log.Printf("words行数：%d, words[0]:%v,words[1]:%v", len(lines), lines[0], lines[1])
+		//}
 		for _, w := range lines {
 			kvArr := strings.Split(w, " ")
 			if len(kvArr) <= 1 {
@@ -225,7 +225,7 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 	}
 	// TODO 给intermediate排序
 	sort.Sort(ByKey(intermediate))
-	log.Printf("intermedia大小：%d", len(intermediate))
+	//log.Printf("intermedia大小：%d", len(intermediate))
 	// TODO 再按照mapf的代码来
 	oname := "mr-out-" + strconv.Itoa(t.TaskNumber)
 	ofile, _ := os.Create(oname)
@@ -270,7 +270,7 @@ func CallExample() {
 
 	// declare a reply structure.
 	reply := ExampleReply{}
-	log.Printf("开始Example")
+	//log.Printf("开始Example")
 
 	// send the RPC request, wait for the reply.
 	// rpcname：注册的类名.方法名
