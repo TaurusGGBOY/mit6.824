@@ -134,7 +134,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	// 对files里面的文件进行分割
 	// 记录第几个count
 	count := 0
-	oname := "pg-"
+	oname := "split-"
 	midWords := []string{}
 	c.totalMapTasks = 0
 	reduceFileName := ""
@@ -176,6 +176,7 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		ofile, _ := os.Create(oname + strconv.Itoa(count/c.singleFileWordNumber))
 		fmt.Fprintf(ofile, "%v ", midWords)
 	}
+	log.Printf("开始监听……")
 	c.server()
 	return &c
 }

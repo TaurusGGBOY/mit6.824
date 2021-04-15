@@ -140,6 +140,7 @@ func (w *MapAndReduceWorker) doTask(t Task) {
 
 func (w *MapAndReduceWorker) doMapTask(t Task) {
 	// 读取文件
+
 	file, err := os.Open(t.FileName)
 	if err != nil {
 		log.Fatalf("cannot open %v", t.FileName)
