@@ -209,6 +209,9 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		words := strings.FieldsFunc(string(content), ff)
 		for _, w := range words {
 			kvArr := strings.Split(w, " ")
+			if len(kvArr) <= 1 {
+				continue
+			}
 			kv := KeyValue{kvArr[0], kvArr[1]}
 			intermediate = append(intermediate, kv)
 		}
