@@ -40,3 +40,11 @@ cmp: EOF on mr-wc-all
   ```
 
 + 开局开启coordinator，1秒之后开启worker，改成5s试试
+
+原因
+
+`开局让coordinator承担了split的任务，导致sleep一秒之后，coordinator还没有启动……`
+
+#### 结局
+
+![](https://gitee.com/agaogao/photobed/raw/master/img/20210419215923.png)
