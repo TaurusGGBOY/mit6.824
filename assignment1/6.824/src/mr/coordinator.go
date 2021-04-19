@@ -78,9 +78,7 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 	}
 	d := time.Duration(time.Second * 10)
 	timer := time.NewTimer(d)
-	defer timer.Stop()
-
-	for {
+	go func() {
 		<-timer.C
 		if c.phase == MapPhase {
 			value, ok := c.mapWaitingResponseQueue[t.TaskNumber]
@@ -95,7 +93,7 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 				c.reduceTasks[t.TaskNumber] = value
 			}
 		}
-	}
+	}()
 	return nil
 }
 
