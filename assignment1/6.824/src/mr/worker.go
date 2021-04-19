@@ -118,7 +118,7 @@ func (w *MapAndReduceWorker) run() {
 			continue
 		}
 		if !t.Alive {
-			fmt.Printf("not Alive, quit")
+			fmt.Printf("not Alive, quit\n")
 			return
 		}
 		w.doTask(t)
@@ -202,12 +202,12 @@ func (w *MapAndReduceWorker) doReduceTask(t Task) {
 		filename := "mr-" + strconv.Itoa(i) + "-" + strconv.Itoa(t.TaskNumber)
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Printf("cannot open %v", filename)
+			//log.Printf("cannot open %v", filename)
 			continue
 		}
 		content, err := ioutil.ReadAll(file)
 		if err != nil {
-			log.Printf("cannot read %v", filename)
+			//log.Printf("cannot read %v", filename)
 			continue
 		}
 		file.Close()
