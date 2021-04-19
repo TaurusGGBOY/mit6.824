@@ -84,13 +84,13 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 		<-timer.C
 		if c.phase == MapPhase {
 			value, ok := c.mapWaitingResponseQueue[t.TaskNumber]
-			if !ok {
+			if ok {
 				delete(c.mapWaitingResponseQueue, t.TaskNumber)
 				c.mapTasks[t.TaskNumber] = value
 			}
 		} else if c.phase == ReducePhase {
 			value, ok := c.reduceWaitingResponseQueue[t.TaskNumber]
-			if !ok {
+			if ok {
 				delete(c.reduceWaitingResponseQueue, t.TaskNumber)
 				c.reduceTasks[t.TaskNumber] = value
 			}
