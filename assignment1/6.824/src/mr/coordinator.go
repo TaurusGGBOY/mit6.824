@@ -4,6 +4,7 @@ import (
 	"log"
 	"strconv"
 	"sync"
+	"time"
 )
 import "net"
 import "os"
@@ -75,6 +76,26 @@ func (c *Coordinator) RequestTask(args *RequestWorker, t *Task) error {
 			break
 		}
 	}
+	d := time.Duration(time.Second * 10)
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+
+	for {
+		<-timer.C
+		if c.phase == MapPhase {
+			value, ok := c.mapWaitingResponseQueue[t.TaskNumber]
+			if !ok {
+				delete(c.mapWaitingResponseQueue, t.TaskNumber)
+				c.mapTasks[t.TaskNumber] = value
+			}
+		} else if c.phase == ReducePhase {
+			value, ok := c.reduceWaitingResponseQueue[t.TaskNumber]
+			if !ok {
+				delete(c.reduceWaitingResponseQueue, t.TaskNumber)
+				c.reduceTasks[t.TaskNumber] = value
+			}
+		}
+	}
 	return nil
 }
 
@@ -134,7 +155,7 @@ func (c *Coordinator) server() {
 func (c *Coordinator) Done() bool {
 	lock.Lock()
 	defer lock.Unlock()
-	if len(c.mapTasks) == 0 && len(c.reduceTasks) == 0 && len(c.mapWaitingResponseQueue) == 0 && len(c.reduceWaitingResponseQueue) == 0 {
+	if len(c.mapTasks) <= 0 && len(c.reduceTasks) <= 0 && len(c.mapWaitingResponseQueue) <= 0 && len(c.reduceWaitingResponseQueue) <= 0 {
 		return true
 	}
 	return false

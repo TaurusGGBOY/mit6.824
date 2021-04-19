@@ -91,7 +91,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	w := MapAndReduceWorker{}
 	w.Mapf = mapf
 	w.Reducef = reducef
-	time.Sleep(time.Second * 5)
 	// 注册
 	w.register()
 	// 运行
@@ -114,7 +113,7 @@ func (w *MapAndReduceWorker) run() {
 		// 循环请求任务
 		t := w.requestTask()
 		if t.TaskNumber == -1 {
-			time.Sleep(time.Duration(5) * time.Second)
+			time.Sleep(time.Duration(1) * time.Second)
 			continue
 		}
 		if !t.Alive {
