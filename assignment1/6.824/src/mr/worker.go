@@ -91,6 +91,7 @@ func Worker(mapf func(string, string) []KeyValue,
 	w := MapAndReduceWorker{}
 	w.Mapf = mapf
 	w.Reducef = reducef
+	time.Sleep(time.Second * 5)
 	// 注册
 	w.register()
 	// 运行
@@ -112,8 +113,8 @@ func (w *MapAndReduceWorker) run() {
 	for {
 		// 循环请求任务
 		t := w.requestTask()
-		if(t.TaskNumber==-1) {
-			time.Sleep(time.Duration(5)*time.Second)
+		if t.TaskNumber == -1 {
+			time.Sleep(time.Duration(5) * time.Second)
 			continue
 		}
 		if !t.Alive {
@@ -153,11 +154,13 @@ func (w *MapAndReduceWorker) doMapTask(t Task) {
 	//defer log.Printf("worker已完成Map任务 文件名：%v 任务号 %v", t.FileName, t.TaskNumber)
 	file, err := os.Open(t.FileName)
 	if err != nil {
-		log.Fatalf("cannot open %v", t.FileName)
+		//log.Fatalf("cannot open %v", t.FileName)
+		return
 	}
 	content, err := ioutil.ReadAll(file)
 	if err != nil {
-		log.Fatalf("cannot read %v", t.FileName)
+		//log.Fatalf("cannot read %v", t.FileName)
+		return
 	}
 	file.Close()
 

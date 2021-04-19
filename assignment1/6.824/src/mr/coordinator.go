@@ -172,11 +172,13 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	for _, filename := range files {
 		file, err := os.Open(filename)
 		if err != nil {
-			log.Fatalf("cannot open %v", filename)
+			//log.Fatalf("cannot open %v", filename)
+			continue
 		}
 		content, err := ioutil.ReadAll(file)
 		if err != nil {
-			log.Fatalf("cannot read %v", filename)
+			//log.Fatalf("cannot read %v", filename)
+			continue
 		}
 		file.Close()
 		// function to detect word separators.
