@@ -1,4 +1,4 @@
-### Assignment1
+## Assignment1
 
 #### 问题探索日志
 
@@ -48,3 +48,35 @@ cmp: EOF on mr-wc-all
 #### 结局
 
 ![](https://gitee.com/agaogao/photobed/raw/master/img/20210419215923.png)
+
+## Assignment2A
+
+### 1 Require
+
+implement selection and heart beat
+
+### 2 TODO
+
++ [ ] Define a struct to hold information about each log entry in Figure 2
++ [ ] RequestVoteArgs
++ [ ] RequestVoteReply
++ [ ] make() start a go routine to start election
++ [ ] RequestVote()
++ [ ] AppendEntries struct
++ [ ] Leader sends AppendEntries as heartbeat
++ [ ] Heartbeat receiver handle
++ [ ] Random timeout
++ [ ] GetState()
++ [ ] rf.Kill()
+
+### 3 Tips
+
++ Read paper's Figure 2 about election
++ Heartbeat no more than 0.1s
++ Selection finishes in 5s
++ Heartbeat may larger than 150ms-300ms
++ Use time.Sleep()
++ RPC only capital letters
++ go test -run 2A -race
+
+### 4 Problems 
