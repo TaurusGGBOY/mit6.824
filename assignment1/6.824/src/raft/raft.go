@@ -64,6 +64,20 @@ type Raft struct {
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
 
+	// Persistent all
+	// TODO need persistent
+	isLeader bool
+	currentTerm int
+	votedFor string
+	log []ApplyMsg
+
+	// Volatile all
+	commitIndex int
+	lastApplied int
+
+	// Volatile leader
+	nextIndex []int
+	matchIndex []int
 }
 
 // return currentTerm and whether this server
@@ -73,6 +87,8 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
+	term = rf.currentTerm
+	isleader = rf.isLeader
 	return term, isleader
 }
 
@@ -90,6 +106,12 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.xxx)
+	e.Encode(rf.yyy)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 
