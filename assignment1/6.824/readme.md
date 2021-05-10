@@ -57,16 +57,16 @@ implement selection and heart beat
 
 ### 2 TODO
 
-+ [ ] Define a struct to hold information about each log entry in Figure 2
-+ [ ] RequestVoteArgs
-+ [ ] RequestVoteReply
-+ [ ] make() start a go routine to start election
++ [x] Define a struct to hold information about each log entry in Figure 2
++ [x] RequestVoteArgs
++ [x] RequestVoteReply
++ [x] make() start a go routine to start election
 + [ ] RequestVote()
-+ [ ] AppendEntries struct
++ [x] AppendEntries struct
 + [ ] Leader sends AppendEntries as heartbeat
 + [ ] Heartbeat receiver handle
 + [ ] Random timeout
-+ [ ] GetState()
++ [x] GetState()
 + [ ] rf.Kill()
 
 ### 3 Tips
