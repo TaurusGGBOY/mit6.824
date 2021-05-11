@@ -24,8 +24,8 @@ import (
 
 	//	"6.824/labgob"
 	"6.824/labrpc"
-	"time"
 	"math/rand"
+	"time"
 )
 
 var lock sync.Mutex
@@ -53,6 +53,11 @@ type ApplyMsg struct {
 	SnapshotIndex int
 }
 
+type Entry struct {
+	term    int
+	Command interface{}
+}
+
 //
 // A Go object implementing a single Raft peer.
 //
@@ -69,10 +74,11 @@ type Raft struct {
 
 	// Persistent all
 	// TODO need persistent
+	// TODO how to define id
 	isLeader    bool
 	currentTerm int
 	votedFor    int
-	log         []ApplyMsg
+	log         []Entry
 
 	// Volatile all
 	commitIndex int
@@ -81,6 +87,8 @@ type Raft struct {
 	// Volatile leader
 	nextIndex  []int
 	matchIndex []int
+
+	receiveHeartbeat bool
 }
 
 //
@@ -89,7 +97,7 @@ type AppendEntriesArgs struct {
 	leaderId     int
 	prevLogIndex int
 	prevLogTerm  int
-	entries      []ApplyMsg
+	entries      []Entry
 	leaderCommit int
 }
 
@@ -212,8 +220,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 	// TODO how to define up-to-date?
-	if rf.votedFor==-1||rf.votedFor==args.candidateId{
+	if len(rf.log)-1 <= args.lastLogIndex || rf.votedFor == args.candidateId {
 		reply.voteGranted = true
+		rf.votedFor = args.candidateId
 	}
 }
 
@@ -249,6 +258,54 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 func (rf *Raft) sendRequestVote(server int, args *RequestVoteArgs, reply *RequestVoteReply) bool {
 	ok := rf.peers[server].Call("Raft.RequestVote", args, reply)
 	return ok
+}
+
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	ok := rf.peers[server].Call("Raft.ReceiveAppendEntries", args, reply)
+	return ok
+}
+
+// TODO
+func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+	// TODO heart beat and log
+	reply.term = rf.currentTerm
+	rf.receiveHeartbeat = true
+	// it's heartbeat
+	if len(args.entries) == 0 {
+		reply.success = true
+		return true
+	}
+	// TODO need a timer to trace the situation of timeout or in ticker??
+	d := time.Duration(time.Microsecond * 300)
+	timer := time.NewTimer(d)
+	go func() {
+		<-timer.C
+		if c.phase == MapPhase {
+			value, ok := c.mapWaitingResponseQueue[t.TaskNumber]
+			if ok {
+				delete(c.mapWaitingResponseQueue, t.TaskNumber)
+				c.mapTasks[t.TaskNumber] = value
+			}
+		} else if c.phase == ReducePhase {
+			value, ok := c.reduceWaitingResponseQueue[t.TaskNumber]
+			if ok {
+				delete(c.reduceWaitingResponseQueue, t.TaskNumber)
+				c.reduceTasks[t.TaskNumber] = value
+			}
+		}
+	}()
+
+	reply.success = false
+	if len(rf.log) >= args.prevLogIndex && rf.log[args.prevLogIndex].term == args.prevLogTerm {
+		reply.success = true
+	} else {
+		return false
+	}
+
+	if args.term < rf.currentTerm {
+		return false
+	}
+	return true
 }
 
 //
@@ -304,13 +361,65 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		time.Sleep(time.Millisecond*150+rand.Intn(150))
-		// TODO heartbeat
+		time.Sleep(time.Millisecond*150 + rand.Intn(150))
 
-		// TODO selection
+		if rf.receiveHeartbeat {
+			rf.receiveHeartbeat = false
+			return
+		}
+
+		// TODO consider the situation that long time no leader
+		// not receive heart beat and start a selection
+
+		args := RequestVoteArgs{}
+		args.candidateId = rf.me
+		args.lastLogIndex = len(rf.log) - 1
+		args.lastLogTerm = rf.log[len(rf.log)-1].term
+		args.term = rf.currentTerm
+
+		count := 0
+		for i := range rf.peers {
+			reply := RequestVoteReply{}
+			// TODO can go routine
+			rf.sendRequestVote(i, &args, &reply)
+			if reply.voteGranted {
+				count++
+			}
+		}
+		if count > len(rf.peers)/2 {
+			rf.isLeader = true
+			rf.sendAllHeartbeat()
+		}
+
 	}
 }
 
+// send HeartBeat
+func (rf *Raft) heartBeatTicker() {
+	for rf.killed() == false {
+		if !rf.isLeader {
+			return
+		}
+		time.Sleep(time.Millisecond * 100)
+
+		// heartbeat
+		rf.sendAllHeartbeat()
+	}
+}
+
+func (rf *Raft) sendAllHeartbeat() {
+	args := AppendEntriesArgs{}
+	args.term = rf.currentTerm
+	args.entries = make([]Entry, 0)
+
+	for i := range rf.peers {
+		go func() {
+			reply := AppendEntriesReply{}
+			// TODO if heartbeat false
+			rf.sendAppendEntries(i, &args, &reply)
+		}()
+	}
+}
 //
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
@@ -338,8 +447,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// TODO if can't get from persist then give them value
 	rf.currentTerm = 0
-	rf.votedFor = -1
-	rf.log = make([]ApplyMsg,0)
+	rf.votedFor = me
+	rf.log = make([]Entry, 0)
+	rf.receiveHeartbeat = false
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
