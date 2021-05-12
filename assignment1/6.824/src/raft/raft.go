@@ -7,10 +7,10 @@ package raft
 //
 // rf = Make(...)
 //   create a new Raft server.
-// rf.Start(command interface{}) (index, term, isleader)
+// rf.Start(command interface{}) (index, Term, isleader)
 //   start agreement on a new log entry
-// rf.GetState() (term, isLeader)
-//   ask a Raft for its current term, and whether it thinks it is leader
+// rf.GetState() (Term, isLeader)
+//   ask a Raft for its current Term, and whether it thinks it is leader
 // ApplyMsg
 //   each time a new entry is committed to the log, each Raft peer
 //   should send an ApplyMsg to the service (or tester)
@@ -29,9 +29,10 @@ import (
 )
 
 var lock sync.Mutex
+var wg sync.WaitGroup
 
 //
-// as each Raft peer becomes aware that successive log entries are
+// as each Raft peer becomes aware that successive log Entries are
 // committed, the peer should send an ApplyMsg to the service (or
 // tester) on the same server, via the applyCh passed to Make(). set
 // CommandValid to true to indicate that the ApplyMsg contains a newly
@@ -54,7 +55,7 @@ type ApplyMsg struct {
 }
 
 type Entry struct {
-	term    int
+	Term    int
 	Command interface{}
 }
 
@@ -93,17 +94,17 @@ type Raft struct {
 
 //
 type AppendEntriesArgs struct {
-	term         int
-	leaderId     int
-	prevLogIndex int
-	prevLogTerm  int
-	entries      []Entry
-	leaderCommit int
+	Term         int
+	LeaderId     int
+	PrevLogIndex int
+	PrevLogTerm  int
+	Entries      []Entry
+	LeaderCommit int
 }
 
 type AppendEntriesReply struct {
-	term    int
-	success bool
+	Term    int
+	Success bool
 }
 
 // return currentTerm and whether this server
@@ -113,7 +114,7 @@ func (rf *Raft) GetState() (int, bool) {
 	var term int
 	var isleader bool
 	// Your code here (2A).
-	// TODO what called 'believe it is the leader'?
+	// what called 'believe it is the leader'?
 	term = rf.currentTerm
 	isleader = rf.isLeader
 	return term, isleader
@@ -133,12 +134,12 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
-	w := new(bytes.Buffer)
-	e := labgob.NewEncoder(w)
-	e.Encode(rf.xxx)
-	e.Encode(rf.yyy)
-	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
+	//w := new(bytes.Buffer)
+	//e := labgob.NewEncoder(w)
+	//e.Encode(rf.xxx)
+	//e.Encode(rf.yyy)
+	//data := w.Bytes()
+	//rf.persister.SaveRaftState(data)
 }
 
 //
@@ -189,10 +190,10 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 //
 type RequestVoteArgs struct {
 	// Your data here (2A, 2B).
-	term         int
-	candidateId  int
-	lastLogIndex int
-	lastLogTerm  int
+	Term         int
+	CandidateId  int
+	LastLogIndex int
+	LastLogTerm  int
 }
 
 //
@@ -201,8 +202,8 @@ type RequestVoteArgs struct {
 //
 type RequestVoteReply struct {
 	// Your data here (2A).
-	term        int
-	voteGranted bool
+	Term        int
+	VoteGranted bool
 }
 
 //
@@ -213,16 +214,15 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	lock.Lock()
 	defer lock.Unlock()
 
-	reply.term = rf.currentTerm
+	reply.Term = rf.currentTerm
 
-	if args.term < rf.currentTerm {
-		reply.voteGranted = false
+	if args.Term < rf.currentTerm {
+		reply.VoteGranted = false
 		return
 	}
-	// TODO how to define up-to-date?
-	if len(rf.log)-1 <= args.lastLogIndex || rf.votedFor == args.candidateId {
-		reply.voteGranted = true
-		rf.votedFor = args.candidateId
+	if len(rf.log) <= args.LastLogIndex && rf.votedFor == args.CandidateId {
+		reply.VoteGranted = true
+		rf.votedFor = args.CandidateId
 	}
 }
 
@@ -267,42 +267,23 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
 // TODO
 func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
-	// TODO heart beat and log
-	reply.term = rf.currentTerm
+	// heart beat and log
+	reply.Term = rf.currentTerm
 	rf.receiveHeartbeat = true
 	// it's heartbeat
-	if len(args.entries) == 0 {
-		reply.success = true
+	if len(args.Entries) == 0 {
+		reply.Success = true
 		return true
 	}
-	// TODO need a timer to trace the situation of timeout or in ticker??
-	d := time.Duration(time.Microsecond * 300)
-	timer := time.NewTimer(d)
-	go func() {
-		<-timer.C
-		if c.phase == MapPhase {
-			value, ok := c.mapWaitingResponseQueue[t.TaskNumber]
-			if ok {
-				delete(c.mapWaitingResponseQueue, t.TaskNumber)
-				c.mapTasks[t.TaskNumber] = value
-			}
-		} else if c.phase == ReducePhase {
-			value, ok := c.reduceWaitingResponseQueue[t.TaskNumber]
-			if ok {
-				delete(c.reduceWaitingResponseQueue, t.TaskNumber)
-				c.reduceTasks[t.TaskNumber] = value
-			}
-		}
-	}()
 
-	reply.success = false
-	if len(rf.log) >= args.prevLogIndex && rf.log[args.prevLogIndex].term == args.prevLogTerm {
-		reply.success = true
+	reply.Success = false
+	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term == args.PrevLogTerm {
+		reply.Success = true
 	} else {
 		return false
 	}
 
-	if args.term < rf.currentTerm {
+	if args.Term < rf.currentTerm {
 		return false
 	}
 	return true
@@ -319,7 +300,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 //
 // the first return value is the index that the command will appear at
 // if it's ever committed. the second return value is the current
-// term. the third return value is true if this server believes it is
+// Term. the third return value is true if this server believes it is
 // the leader.
 //
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
@@ -361,8 +342,9 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		time.Sleep(time.Millisecond*150 + rand.Intn(150))
-
+		time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
+		lock.Lock()
+		defer lock.Unlock()
 		if rf.receiveHeartbeat {
 			rf.receiveHeartbeat = false
 			return
@@ -370,27 +352,32 @@ func (rf *Raft) ticker() {
 
 		// TODO consider the situation that long time no leader
 		// not receive heart beat and start a selection
-
 		args := RequestVoteArgs{}
-		args.candidateId = rf.me
-		args.lastLogIndex = len(rf.log) - 1
-		args.lastLogTerm = rf.log[len(rf.log)-1].term
-		args.term = rf.currentTerm
+		args.CandidateId = rf.me
+		args.LastLogIndex = len(rf.log)
+		args.LastLogTerm = rf.log[len(rf.log)-1].Term
+		args.Term = rf.currentTerm
 
 		count := 0
 		for i := range rf.peers {
-			reply := RequestVoteReply{}
-			// TODO can go routine
-			rf.sendRequestVote(i, &args, &reply)
-			if reply.voteGranted {
-				count++
-			}
+			wg.Add(1)
+			go func() {
+				reply := RequestVoteReply{}
+				// TODO can go routine
+				rf.sendRequestVote(i, &args, &reply)
+				if reply.VoteGranted {
+					lock.Lock()
+					defer lock.Unlock()
+					count++
+				}
+				wg.Done()
+			}()
 		}
+		wg.Wait()
 		if count > len(rf.peers)/2 {
 			rf.isLeader = true
 			rf.sendAllHeartbeat()
 		}
-
 	}
 }
 
@@ -409,8 +396,8 @@ func (rf *Raft) heartBeatTicker() {
 
 func (rf *Raft) sendAllHeartbeat() {
 	args := AppendEntriesArgs{}
-	args.term = rf.currentTerm
-	args.entries = make([]Entry, 0)
+	args.Term = rf.currentTerm
+	args.Entries = make([]Entry, 0)
 
 	for i := range rf.peers {
 		go func() {
@@ -420,6 +407,7 @@ func (rf *Raft) sendAllHeartbeat() {
 		}()
 	}
 }
+
 //
 // the service or tester wants to create a Raft server. the ports
 // of all the Raft servers (including this one) are in peers[]. this
@@ -448,7 +436,9 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// TODO if can't get from persist then give them value
 	rf.currentTerm = 0
 	rf.votedFor = me
+	// it's leading to the index start with 1 but there are 1 more log
 	rf.log = make([]Entry, 0)
+	rf.log = append(rf.log, Entry{})
 	rf.receiveHeartbeat = false
 
 	// start ticker goroutine to start elections
