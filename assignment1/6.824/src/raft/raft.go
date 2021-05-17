@@ -18,6 +18,7 @@ package raft
 //
 
 import (
+	"fmt"
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -213,16 +214,18 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	lock.Lock()
 	defer lock.Unlock()
-
+	fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d receive vote from %d\n", rf.me, args.CandidateId)
 	reply.Term = rf.currentTerm
 
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
+		fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d\n", rf.me, rf.votedFor)
 		return
 	}
 	if len(rf.log) <= args.LastLogIndex && rf.votedFor == args.CandidateId {
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
+		fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d\n", rf.me, rf.votedFor)
 	}
 }
 
@@ -267,15 +270,17 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 
 // TODO
 func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) bool {
+
 	// heart beat and log
 	reply.Term = rf.currentTerm
 	rf.receiveHeartbeat = true
 	// it's heartbeat
 	if len(args.Entries) == 0 {
 		reply.Success = true
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive heartbeat\n", rf.me)
 		return true
 	}
-
+	fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d receive log entry\n", rf.me)
 	reply.Success = false
 	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term == args.PrevLogTerm {
 		reply.Success = true
@@ -343,13 +348,13 @@ func (rf *Raft) ticker() {
 		// be started and to randomize sleeping time using
 		// time.Sleep().
 		time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
-		lock.Lock()
-		defer lock.Unlock()
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start\n", rf.me)
+
 		if rf.receiveHeartbeat {
 			rf.receiveHeartbeat = false
 			return
 		}
-
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection\n", rf.me)
 		// TODO consider the situation that long time no leader
 		// not receive heart beat and start a selection
 		args := RequestVoteArgs{}
@@ -359,25 +364,33 @@ func (rf *Raft) ticker() {
 		args.Term = rf.currentTerm
 
 		count := 0
+		lock.Lock()
+
+		wg.Add(len(rf.peers))
 		for i := range rf.peers {
-			wg.Add(1)
-			go func() {
+			go func(i int) {
 				reply := RequestVoteReply{}
 				// TODO can go routine
-				rf.sendRequestVote(i, &args, &reply)
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send vote to %d\n", rf.me, i)
+				if !rf.sendRequestVote(i, &args, &reply){
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d\n", rf.me, i)
+				}else{
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receives vote reply\n", rf.me)
+				}
 				if reply.VoteGranted {
-					lock.Lock()
-					defer lock.Unlock()
 					count++
 				}
 				wg.Done()
-			}()
+			}(i)
 		}
 		wg.Wait()
 		if count > len(rf.peers)/2 {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
 			rf.isLeader = true
 			rf.sendAllHeartbeat()
 		}
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
+		lock.Unlock()
 	}
 }
 
@@ -390,6 +403,7 @@ func (rf *Raft) heartBeatTicker() {
 		time.Sleep(time.Millisecond * 100)
 
 		// heartbeat
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send all heartbeat", rf.me)
 		rf.sendAllHeartbeat()
 	}
 }
@@ -443,6 +457,6 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// start ticker goroutine to start elections
 	go rf.ticker()
-
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
 	return rf
 }
