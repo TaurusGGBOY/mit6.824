@@ -29,8 +29,6 @@ import (
 	"time"
 )
 
-var lock sync.Mutex
-var wg sync.WaitGroup
 
 //
 // as each Raft peer becomes aware that successive log Entries are
@@ -116,8 +114,10 @@ func (rf *Raft) GetState() (int, bool) {
 	var isleader bool
 	// Your code here (2A).
 	// what called 'believe it is the leader'?
+	rf.mu.Lock()
 	term = rf.currentTerm
 	isleader = rf.isLeader
+	rf.mu.Unlock()
 	return term, isleader
 }
 
@@ -212,20 +212,22 @@ type RequestVoteReply struct {
 //
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	lock.Lock()
-	defer lock.Unlock()
-	fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d receive vote from %d\n", rf.me, args.CandidateId)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive vote from %d\n", rf.me, args.CandidateId)
+	//lock.Lock()
+	//defer lock.Unlock()
 	reply.Term = rf.currentTerm
 
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
-		fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d\n", rf.me, rf.votedFor)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d\n", rf.me, rf.votedFor)
 		return
 	}
-	if len(rf.log) <= args.LastLogIndex && rf.votedFor == args.CandidateId {
+
+	// TODO what about the second term
+	if len(rf.log) <= args.LastLogIndex && (rf.votedFor == args.CandidateId || rf.votedFor == -1) {
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
-		fmt.Println(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d\n", rf.me, rf.votedFor)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d\n", rf.me, rf.votedFor)
 	}
 }
 
@@ -274,6 +276,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// heart beat and log
 	reply.Term = rf.currentTerm
 	rf.receiveHeartbeat = true
+	rf.votedFor = -1
 	// it's heartbeat
 	if len(args.Entries) == 0 {
 		reply.Success = true
@@ -364,21 +367,22 @@ func (rf *Raft) ticker() {
 		args.Term = rf.currentTerm
 
 		count := 0
-		lock.Lock()
-
+		var wg sync.WaitGroup
 		wg.Add(len(rf.peers))
 		for i := range rf.peers {
 			go func(i int) {
 				reply := RequestVoteReply{}
 				// TODO can go routine
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send vote to %d\n", rf.me, i)
-				if !rf.sendRequestVote(i, &args, &reply){
+				if !rf.sendRequestVote(i, &args, &reply) {
 					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d\n", rf.me, i)
-				}else{
+				} else {
 					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receives vote reply\n", rf.me)
 				}
 				if reply.VoteGranted {
+					rf.mu.Lock()
 					count++
+					rf.mu.Unlock()
 				}
 				wg.Done()
 			}(i)
@@ -386,11 +390,14 @@ func (rf *Raft) ticker() {
 		wg.Wait()
 		if count > len(rf.peers)/2 {
 			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+			rf.mu.Lock()
 			rf.isLeader = true
-			rf.sendAllHeartbeat()
+			rf.currentTerm++
+			rf.mu.Unlock()
+			// TODO temp cancel heartbeat
+			//rf.sendAllHeartbeat()
 		}
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
-		lock.Unlock()
 	}
 }
 
@@ -404,7 +411,8 @@ func (rf *Raft) heartBeatTicker() {
 
 		// heartbeat
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send all heartbeat", rf.me)
-		rf.sendAllHeartbeat()
+		// TODO temp pause heartbeat
+		//rf.sendAllHeartbeat()
 	}
 }
 
@@ -414,11 +422,11 @@ func (rf *Raft) sendAllHeartbeat() {
 	args.Entries = make([]Entry, 0)
 
 	for i := range rf.peers {
-		go func() {
+		go func(i int) {
 			reply := AppendEntriesReply{}
 			// TODO if heartbeat false
 			rf.sendAppendEntries(i, &args, &reply)
-		}()
+		}(i)
 	}
 }
 
@@ -449,7 +457,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 
 	// TODO if can't get from persist then give them value
 	rf.currentTerm = 0
-	rf.votedFor = me
+	rf.votedFor = -1
 	// it's leading to the index start with 1 but there are 1 more log
 	rf.log = make([]Entry, 0)
 	rf.log = append(rf.log, Entry{})
