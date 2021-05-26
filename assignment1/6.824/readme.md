@@ -79,4 +79,9 @@ implement selection and heart beat
 + RPC only capital letters
 + go test -run 2A -race
 
-### 4 Problems 
+### 4 Problems and Solve
+
+1. can't rpc RequestVote function
+2. there sometimes are 3 leaders at one time
+    + consider one is leader and vote for another one, and he become leader and not send heartbeat yet
+    + there is no timeout for a selection
