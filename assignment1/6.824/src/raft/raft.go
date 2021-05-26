@@ -275,11 +275,11 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// heart beat and log
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d\n", rf.me,args.LeaderId)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d with term %d\n", rf.me, args.LeaderId,args.Term)
 	reply.Term = rf.currentTerm
 
 	if args.Term < rf.currentTerm {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d\n", rf.me,args.LeaderId)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d\n", rf.me, args.LeaderId)
 		reply.Success = false
 		return
 	}
@@ -287,11 +287,15 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// it's heartbeat
 	if len(args.Entries) == 0 {
 		reply.Success = true
-		rf.currentTerm = args.Term
-		rf.receiveHeartbeat = true
-		rf.votedFor = -1
-		if args.LeaderId!=rf.me{
-			rf.isLeader = false
+
+		// high term heart beat
+		if rf.currentTerm < args.Term {
+			rf.votedFor = -1
+			rf.currentTerm = args.Term
+			rf.receiveHeartbeat = true
+			if args.LeaderId != rf.me {
+				rf.isLeader = false
+			}
 		}
 		return
 	}
@@ -362,13 +366,13 @@ func (rf *Raft) ticker() {
 		rf.mu.Lock()
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start with term %d\n", rf.me, rf.currentTerm)
 
-		if rf.receiveHeartbeat {
+		// if receive heartbeart in last sleep then no selection
+		if rf.receiveHeartbeat || rf.isLeader {
 			rf.receiveHeartbeat = false
 			rf.mu.Unlock()
 			continue
 		}
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection\n", rf.me)
-		rf.mu.Unlock()
 
 		// TODO consider the situation that long time no leader
 		// not receive heart beat and start a selection
@@ -376,16 +380,21 @@ func (rf *Raft) ticker() {
 		args.CandidateId = rf.me
 		args.LastLogIndex = len(rf.log)
 		args.LastLogTerm = rf.log[len(rf.log)-1].Term
+		rf.currentTerm++
 		args.Term = rf.currentTerm
+		rf.mu.Unlock()
 
-		count := 0
+		// vote for self
+		count := 1
 		var wg sync.WaitGroup
-		wg.Add(len(rf.peers))
+		wg.Add(len(rf.peers) - 1)
 		for i := range rf.peers {
+			if i == rf.me {
+				continue
+			}
 			go func(i int) {
 				reply := RequestVoteReply{}
-				// TODO can go routine
-				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send vote to %d\n", rf.me, i)
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d\n", rf.me, i)
 				if !rf.sendRequestVote(i, &args, &reply) {
 					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d\n", rf.me, i)
 				} else {
@@ -399,18 +408,33 @@ func (rf *Raft) ticker() {
 				wg.Done()
 			}(i)
 		}
-		wg.Wait()
-		if count > len(rf.peers)/2 {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+		go func() {
+			wg.Wait()
+
+			// condition2 when receiveHeartBeat
 			rf.mu.Lock()
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d no dead lock\n", rf.me)
-			rf.isLeader = true
-			rf.currentTerm++
+			if rf.receiveHeartbeat {
+				rf.mu.Unlock()
+				return
+			}
 			rf.mu.Unlock()
-			// TODO periodly heartbeat
-			go rf.heartBeatTicker()
-		}
+
+			// condition1 when win
+			if count > len(rf.peers)/2 {
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+				rf.mu.Lock()
+				rf.isLeader = true
+				rf.mu.Unlock()
+				// periodly heartbeat
+				go rf.heartBeatTicker()
+			}
+
+			// condition3 when lose
+		}()
+
+		rf.mu.Lock()
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
+		rf.mu.Unlock()
 	}
 }
 
@@ -419,10 +443,11 @@ func (rf *Raft) heartBeatTicker() {
 	for rf.killed() == false {
 		rf.mu.Lock()
 		if !rf.isLeader {
+			rf.mu.Unlock()
 			return
 		}
 		// heartbeat
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send all heartbeat\n", rf.me)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send all heartbeat in term %d\n", rf.me, rf.currentTerm)
 		rf.mu.Unlock()
 		rf.sendAllHeartbeat()
 		time.Sleep(time.Millisecond * 100)
@@ -437,6 +462,9 @@ func (rf *Raft) sendAllHeartbeat() {
 	args.Entries = make([]Entry, 0)
 
 	for i := range rf.peers {
+		if i == rf.me {
+			continue
+		}
 		go func(i int) {
 			reply := AppendEntriesReply{}
 			// TODO if heartbeat false
