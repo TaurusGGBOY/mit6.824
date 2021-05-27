@@ -305,6 +305,7 @@ func (cfg *config) cleanup() {
 func (cfg *config) connect(i int) {
 	// fmt.Printf("connect(%d)\n", i)
 
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" connect server %d\n", i)
 	cfg.connected[i] = true
 
 	// outgoing ClientEnds
@@ -327,7 +328,7 @@ func (cfg *config) connect(i int) {
 // detach server i from the net.
 func (cfg *config) disconnect(i int) {
 	// fmt.Printf("disconnect(%d)\n", i)
-
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" disconnect server %d\n", i)
 	cfg.connected[i] = false
 
 	// outgoing ClientEnds

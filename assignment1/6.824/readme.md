@@ -85,3 +85,9 @@ implement selection and heart beat
 2. there sometimes are 3 leaders at one time
     + consider one is leader and vote for another one, and he become leader and not send heartbeat yet
     + there is no timeout for a selection
+    + solution: old leader received old vote from others
+        + received vote then judge if it's legal
+3. election need timetout scheme
+   + first, add timetout scheme, when it comes to 150ms-300ms, judge if win
+   + second, add waitgroup scheme, if get all vote reply, then judge if win
+4. selection reply need to judge if it's from currentterm 

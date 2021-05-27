@@ -209,16 +209,16 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive vote from %d\n", rf.me, args.CandidateId)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive requestvote from %d for term %d\n", rf.me, args.CandidateId, args.Term)
 	//lock.Lock()
 	//defer lock.Unlock()
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	reply.Term = rf.currentTerm
+	reply.Term = args.Term
 
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d\n", rf.me, rf.votedFor)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
 		return
 	}
 
@@ -226,7 +226,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if len(rf.log) <= args.LastLogIndex && (rf.votedFor == args.CandidateId || rf.votedFor == -1) {
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d\n", rf.me, rf.votedFor)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d for term %d\n", rf.me, rf.votedFor, args.Term)
 		return
 	}
 }
@@ -273,10 +273,11 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 // TODO
 func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	// heart beat and log
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive a appendEntries from %d with term %d\n", rf.me, args.LeaderId, args.Term)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d with term %d\n", rf.me, args.LeaderId,args.Term)
-	reply.Term = rf.currentTerm
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d with term %d\n", rf.me, args.LeaderId, args.Term)
+	reply.Term = args.Term
 
 	if args.Term < rf.currentTerm {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d\n", rf.me, args.LeaderId)
@@ -287,13 +288,15 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// it's heartbeat
 	if len(args.Entries) == 0 {
 		reply.Success = true
+		rf.receiveHeartbeat = true
 
 		// high term heart beat
 		if rf.currentTerm < args.Term {
 			rf.votedFor = -1
 			rf.currentTerm = args.Term
-			rf.receiveHeartbeat = true
-			if args.LeaderId != rf.me {
+			// only term > me then give up leader
+			if rf.isLeader {
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit leader and give leader to %d at term %d\n", rf.me, args.LeaderId, args.Term)
 				rf.isLeader = false
 			}
 		}
@@ -369,6 +372,7 @@ func (rf *Raft) ticker() {
 		// if receive heartbeart in last sleep then no selection
 		if rf.receiveHeartbeat || rf.isLeader {
 			rf.receiveHeartbeat = false
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive heartbeat or I'm leader %d\n", rf.me, rf.currentTerm)
 			rf.mu.Unlock()
 			continue
 		}
@@ -381,57 +385,73 @@ func (rf *Raft) ticker() {
 		args.LastLogIndex = len(rf.log)
 		args.LastLogTerm = rf.log[len(rf.log)-1].Term
 		rf.currentTerm++
+		rf.votedFor = -1
 		args.Term = rf.currentTerm
 		rf.mu.Unlock()
 
 		// vote for self
 		count := 1
-		var wg sync.WaitGroup
-		wg.Add(len(rf.peers) - 1)
+		wg := sync.WaitGroup{}
+		wg.Add(len(rf.peers)-1)
 		for i := range rf.peers {
 			if i == rf.me {
 				continue
 			}
 			go func(i int) {
 				reply := RequestVoteReply{}
-				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d\n", rf.me, i)
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d for term %d\n", rf.me, i, args.Term)
 				if !rf.sendRequestVote(i, &args, &reply) {
-					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d\n", rf.me, i)
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d for term %d\n", rf.me, i, args.Term)
 				} else {
-					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receives vote reply\n", rf.me)
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get vote reply from %d for term %d\n", rf.me, i, args.Term)
 				}
-				if reply.VoteGranted {
-					rf.mu.Lock()
+				rf.mu.Lock()
+				if reply.VoteGranted && reply.Term == rf.currentTerm {
 					count++
-					rf.mu.Unlock()
+					wg.Done()
 				}
-				wg.Done()
+				rf.mu.Unlock()
 			}(i)
 		}
-		go func() {
-			wg.Wait()
+		// if timeout then stop
 
-			// condition2 when receiveHeartBeat
+		go func(term int) {
+			wg.Wait()
 			rf.mu.Lock()
-			if rf.receiveHeartbeat {
-				rf.mu.Unlock()
+			defer rf.mu.Unlock()
+			// condition2 when receiveHeartBeat
+			if rf.receiveHeartbeat || rf.isLeader || term!=rf.currentTerm{
 				return
 			}
-			rf.mu.Unlock()
 
 			// condition1 when win
 			if count > len(rf.peers)/2 {
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
-				rf.mu.Lock()
 				rf.isLeader = true
-				rf.mu.Unlock()
 				// periodly heartbeat
 				go rf.heartBeatTicker()
 			}
-
 			// condition3 when lose
-		}()
+		}(rf.currentTerm)
 
+		go func(term int) {
+			time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
+			// condition2 when receiveHeartBeat
+			if rf.receiveHeartbeat || rf.isLeader || term!=rf.currentTerm{
+				return
+			}
+
+			// condition1 when win
+			if count > len(rf.peers)/2 {
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+				rf.isLeader = true
+				// periodly heartbeat
+				go rf.heartBeatTicker()
+			}
+			// condition3 when lose
+		}(rf.currentTerm)
 		rf.mu.Lock()
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
 		rf.mu.Unlock()
@@ -458,6 +478,7 @@ func (rf *Raft) sendAllHeartbeat() {
 	args := AppendEntriesArgs{}
 	rf.mu.Lock()
 	args.Term = rf.currentTerm
+	args.LeaderId = rf.me
 	rf.mu.Unlock()
 	args.Entries = make([]Entry, 0)
 
@@ -507,7 +528,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.receiveHeartbeat = false
 
 	// start ticker goroutine to start elections
-	go rf.ticker()
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
+	go rf.ticker()
 	return rf
 }
