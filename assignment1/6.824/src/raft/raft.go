@@ -214,12 +214,15 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	//defer lock.Unlock()
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	reply.Term = args.Term
+	reply.Term = rf.currentTerm
 
-	if args.Term < rf.currentTerm {
+	if rf.currentTerm > args.Term {
 		reply.VoteGranted = false
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
 		return
+	} else {
+		rf.currentTerm = args.Term
+		reply.Term = rf.currentTerm
 	}
 
 	// TODO what about the second term
@@ -277,7 +280,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d with term %d\n", rf.me, args.LeaderId, args.Term)
-	reply.Term = args.Term
+	reply.Term = rf.currentTerm
 
 	if args.Term < rf.currentTerm {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d\n", rf.me, args.LeaderId)
@@ -294,6 +297,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		if rf.currentTerm < args.Term {
 			rf.votedFor = -1
 			rf.currentTerm = args.Term
+			reply.Term = rf.currentTerm
 			// only term > me then give up leader
 			if rf.isLeader {
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit leader and give leader to %d at term %d\n", rf.me, args.LeaderId, args.Term)
@@ -392,12 +396,13 @@ func (rf *Raft) ticker() {
 		// vote for self
 		count := 1
 		wg := sync.WaitGroup{}
-		wg.Add(len(rf.peers)-1)
+		wg.Add(len(rf.peers) - 1)
 		for i := range rf.peers {
 			if i == rf.me {
 				continue
 			}
-			go func(i int) {
+			rf.mu.Lock()
+			go func(i int, currentTerm int) {
 				reply := RequestVoteReply{}
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d for term %d\n", rf.me, i, args.Term)
 				if !rf.sendRequestVote(i, &args, &reply) {
@@ -406,12 +411,17 @@ func (rf *Raft) ticker() {
 					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get vote reply from %d for term %d\n", rf.me, i, args.Term)
 				}
 				rf.mu.Lock()
-				if reply.VoteGranted && reply.Term == rf.currentTerm {
+				// prevent timeout vote
+				if reply.VoteGranted && reply.Term >= currentTerm{
+					if reply.Term>rf.currentTerm{
+						rf.currentTerm = reply.Term
+					}
 					count++
 					wg.Done()
 				}
 				rf.mu.Unlock()
-			}(i)
+			}(i, rf.currentTerm)
+			rf.mu.Unlock()
 		}
 		// if timeout then stop
 
@@ -420,7 +430,7 @@ func (rf *Raft) ticker() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			// condition2 when receiveHeartBeat
-			if rf.receiveHeartbeat || rf.isLeader || term!=rf.currentTerm{
+			if rf.receiveHeartbeat || rf.isLeader{
 				return
 			}
 
@@ -439,7 +449,7 @@ func (rf *Raft) ticker() {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			// condition2 when receiveHeartBeat
-			if rf.receiveHeartbeat || rf.isLeader || term!=rf.currentTerm{
+			if rf.receiveHeartbeat || rf.isLeader || term != rf.currentTerm {
 				return
 			}
 
@@ -487,9 +497,14 @@ func (rf *Raft) sendAllHeartbeat() {
 			continue
 		}
 		go func(i int) {
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
 			reply := AppendEntriesReply{}
 			// TODO if heartbeat false
 			rf.sendAppendEntries(i, &args, &reply)
+			if reply.Term > rf.currentTerm {
+				rf.currentTerm = reply.Term
+			}
 		}(i)
 	}
 }
