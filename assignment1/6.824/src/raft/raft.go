@@ -209,20 +209,23 @@ type RequestVoteReply struct {
 // example RequestVote RPC handler.
 func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive requestvote from %d for term %d\n", rf.me, args.CandidateId, args.Term)
 	//lock.Lock()
 	//defer lock.Unlock()
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive requestvote in term %d from %d for term %d\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
+
 	reply.Term = rf.currentTerm
 
-	if rf.currentTerm > args.Term {
+	if args.Term < rf.currentTerm  {
 		reply.VoteGranted = false
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
 		return
 	} else {
 		rf.currentTerm = args.Term
 		reply.Term = rf.currentTerm
+		rf.votedFor = -1
 	}
 
 	// TODO what about the second term
@@ -232,6 +235,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d for term %d\n", rf.me, rf.votedFor, args.Term)
 		return
 	}
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d not vote for you but vote for %d\n", rf.me, rf.votedFor)
 }
 
 //
@@ -294,7 +298,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		rf.receiveHeartbeat = true
 
 		// high term heart beat
-		if rf.currentTerm < args.Term {
+		if rf.currentTerm <= args.Term {
 			rf.votedFor = -1
 			rf.currentTerm = args.Term
 			reply.Term = rf.currentTerm
@@ -365,18 +369,17 @@ func (rf *Raft) killed() bool {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
-
+		time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
 		rf.mu.Lock()
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start with term %d\n", rf.me, rf.currentTerm)
 
 		// if receive heartbeart in last sleep then no selection
 		if rf.receiveHeartbeat || rf.isLeader {
 			rf.receiveHeartbeat = false
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive heartbeat or I'm leader %d\n", rf.me, rf.currentTerm)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive heartbeat %t or I'm leader%t in term %d\n", rf.me, rf.receiveHeartbeat, rf.isLeader, rf.currentTerm)
 			rf.mu.Unlock()
 			continue
 		}
@@ -396,7 +399,7 @@ func (rf *Raft) ticker() {
 		// vote for self
 		count := 1
 		wg := sync.WaitGroup{}
-		wg.Add(len(rf.peers) - 1)
+		wg.Add(len(rf.peers) / 2)
 		for i := range rf.peers {
 			if i == rf.me {
 				continue
@@ -408,16 +411,18 @@ func (rf *Raft) ticker() {
 				if !rf.sendRequestVote(i, &args, &reply) {
 					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d for term %d\n", rf.me, i, args.Term)
 				} else {
-					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get vote reply from %d for term %d\n", rf.me, i, args.Term)
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get vote reply from %d vote for me: %t for term %d\n", rf.me, i, reply.VoteGranted, args.Term)
 				}
 				rf.mu.Lock()
 				// prevent timeout vote
-				if reply.VoteGranted && reply.Term >= currentTerm{
-					if reply.Term>rf.currentTerm{
-						rf.currentTerm = reply.Term
-					}
+				if reply.VoteGranted {
 					count++
-					wg.Done()
+					if count-1 <= len(rf.peers)/2 {
+						wg.Done()
+					}
+				}
+				if reply.Term > rf.currentTerm {
+					rf.currentTerm = reply.Term
 				}
 				rf.mu.Unlock()
 			}(i, rf.currentTerm)
@@ -425,27 +430,29 @@ func (rf *Raft) ticker() {
 		}
 		// if timeout then stop
 
+		rf.mu.Lock()
 		go func(term int) {
 			wg.Wait()
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d win term %d, current term %d\n", rf.me, term, rf.currentTerm)
 			// condition2 when receiveHeartBeat
-			if rf.receiveHeartbeat || rf.isLeader{
+			if rf.receiveHeartbeat || rf.isLeader || rf.currentTerm != term {
 				return
 			}
 
 			// condition1 when win
-			if count > len(rf.peers)/2 {
-				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
-				rf.isLeader = true
-				// periodly heartbeat
-				go rf.heartBeatTicker()
-			}
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+			rf.isLeader = true
+			// periodly heartbeat
+			go rf.heartBeatTicker()
 			// condition3 when lose
 		}(rf.currentTerm)
+		rf.mu.Unlock()
 
+		time.Sleep(time.Millisecond * time.Duration(500))
+		rf.mu.Lock()
 		go func(term int) {
-			time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			// condition2 when receiveHeartBeat
@@ -462,6 +469,8 @@ func (rf *Raft) ticker() {
 			}
 			// condition3 when lose
 		}(rf.currentTerm)
+		rf.mu.Unlock()
+
 		rf.mu.Lock()
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
 		rf.mu.Unlock()
@@ -497,11 +506,11 @@ func (rf *Raft) sendAllHeartbeat() {
 			continue
 		}
 		go func(i int) {
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
 			reply := AppendEntriesReply{}
 			// TODO if heartbeat false
 			rf.sendAppendEntries(i, &args, &reply)
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
 			if reply.Term > rf.currentTerm {
 				rf.currentTerm = reply.Term
 			}

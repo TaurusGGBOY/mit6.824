@@ -45,6 +45,10 @@ cmp: EOF on mr-wc-all
 
 `开局让coordinator承担了split的任务，导致sleep一秒之后，coordinator还没有启动……`
 
+##### cost time
+
+20h
+
 #### 结局
 
 ![](https://gitee.com/agaogao/photobed/raw/master/img/20210419215923.png)
@@ -78,6 +82,7 @@ implement selection and heart beat
 + Use time.Sleep()
 + RPC only capital letters
 + go test -run 2A -race
++ set selection timeout 400ms
 
 ### 4 Problems and Solve
 
@@ -90,4 +95,13 @@ implement selection and heart beat
 3. election need timetout scheme
    + first, add timetout scheme, when it comes to 150ms-300ms, judge if win
    + second, add waitgroup scheme, if get all vote reply, then judge if win
-4. selection reply need to judge if it's from currentterm 
+4. selection reply need to judge if it's from currentterm
+5. leader win the selection, but leader term is less than a candidate
+   + so what to do for this follower?
+   + leader should update term when vote and heartbeat
+   
+### 5 Result
+![](https://gitee.com/agaogao/photobed/raw/master/img/20210601225039.png)
+
+### 6 Cost time
+20-30h
