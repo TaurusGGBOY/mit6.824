@@ -218,7 +218,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	reply.Term = rf.currentTerm
 
-	if args.Term < rf.currentTerm  {
+	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
 		return
@@ -340,6 +340,12 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
+	if !rf.isLeader {
+		isLeader = false
+	}
+	// TODO not sure
+	index = rf.commitIndex
+	term = rf.currentTerm
 
 	return index, term, isLeader
 }
