@@ -105,3 +105,58 @@ implement selection and heart beat
 
 ### 6 Cost time
 20-30h
+
+## 2B
+
+### 1 Require
+
+implement append log
+
+### 2 TODO
+
++ [x] Define a struct to hold information about each log entry in Figure 2
+
+### 3 Tips
+
++ [ ] figure2
+
+### 4 Problems and Solve
+
++ [ ] is log entry like appmsg
++ [ ] what is command interface{}?
++ [ ] logic
+   + leader: send log rpc to client
+   + client: state machine add command
+   + leader: wait for entry all replicated, apply the entry to state machine
+      + send commit to client
+   + leader: retry infinitely if followers not apply entry
++ [ ] leader: apply and commit entry once apply by majority of servers.
+   + add all prev log created by prev leaders
++ [ ] leader: track highest index committed
+   + heartbeat will take this index
+   + client: learn this index and apply state machine
+   + client run command not change state machine?
+   + client receieves index and update state machine
+      + what if client has long distence with leader? how can he reach the index lastest?
++ [ ] client receive commit index, if index no this entry, then not commit
+   + it guarantees client run command must be committed
+   + it guarantees follower log is same with the leader
++ [ ] if clients logs different with the leader, get rid of logs from clients
+   + return reject and delete log after the next index from heartbeat
+   + leader retry with nextindex--, but not delete log
+   + how they check if logs are consistency?
+   + can check term to optimization communication time
++ [ ] so majority of servers apply can be commit 
+   + what about the minority of servers not be apply log? Ask log while send appendentryRPC?
+   
+
+### 5 Result
+
+
+### 6 Cost time
+
+## improve points
+
++ Once follower is down, leader will try appendentry rpc infinitely and won't stop.
++ One time can append a piece of command
++ logs delete if not match
