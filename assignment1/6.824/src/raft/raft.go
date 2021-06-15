@@ -340,11 +340,17 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	if !rf.isLeader {
 		isLeader = false
+		return index, term, isLeader
 	}
-	// TODO not sure
-	index = rf.commitIndex
+	entry:=Entry{rf.currentTerm,command}
+	rf.log = append(rf.log, entry)
+	// if it is
+	index = len(rf.log)-1
 	term = rf.currentTerm
 
 	return index, term, isLeader
@@ -545,6 +551,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// Your initialization code here (2A, 2B, 2C).
 	rf.commitIndex = 0
 	rf.lastApplied = 0
+	rf.matchIndex = make([]int, len(rf.peers))
+	rf.nextIndex = make([]int, len(rf.peers))
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
