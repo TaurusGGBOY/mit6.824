@@ -73,7 +73,6 @@ type Raft struct {
 
 	// Persistent all
 	// TODO need persistent
-	// TODO how to define id
 	isLeader    bool
 	currentTerm int
 	votedFor    int
@@ -311,13 +310,41 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		return
 	}
 
-	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term == args.PrevLogTerm {
-		reply.Success = true
+	// implementation 2
+	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
+		reply.Success = false
 		return
 	}
 
-	reply.Success = false
-	return
+	tempIndex := args.PrevLogIndex
+	flag := 0
+	// implementation 3 & 4
+	for _, entry := range args.Entries {
+		tempIndex++
+		if flag == 0 {
+			if len(rf.log) > tempIndex && rf.log[tempIndex+1].Term != entry.Term {
+				rf.log = rf.log[:(tempIndex)]
+				flag = 1
+			}
+		} else {
+			rf.log = append(rf.log, entry)
+		}
+	}
+
+	if args.LeaderCommit > rf.commitIndex {
+		if args.LeaderCommit>tempIndex{
+			rf.commitIndex = tempIndex
+		}else{
+			rf.commitIndex = args.LeaderCommit
+		}
+	}
+
+	// update lastApplied
+	if rf.commitIndex > rf.lastApplied {
+		rf.lastApplied = rf.commitIndex
+		// TODO what is apply log[lastApplied] to state machine
+	}
+	reply.Success = true
 }
 
 //
@@ -347,10 +374,10 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		isLeader = false
 		return index, term, isLeader
 	}
-	entry:=Entry{rf.currentTerm,command}
+	entry := Entry{rf.currentTerm, command}
 	rf.log = append(rf.log, entry)
 	// if it is
-	index = len(rf.log)-1
+	index = len(rf.log) - 1
 	term = rf.currentTerm
 
 	return index, term, isLeader
@@ -455,10 +482,7 @@ func (rf *Raft) ticker() {
 
 			// condition1 when win
 			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
-			rf.isLeader = true
-			// periodly heartbeat
-			go rf.heartBeatTicker()
-			// condition3 when lose
+			rf.becomeLeader()
 		}(rf.currentTerm)
 		rf.mu.Unlock()
 
@@ -475,9 +499,7 @@ func (rf *Raft) ticker() {
 			// condition1 when win
 			if count > len(rf.peers)/2 {
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
-				rf.isLeader = true
-				// periodly heartbeat
-				go rf.heartBeatTicker()
+				rf.becomeLeader()
 			}
 			// condition3 when lose
 		}(rf.currentTerm)
@@ -487,6 +509,20 @@ func (rf *Raft) ticker() {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
 		rf.mu.Unlock()
 	}
+}
+
+func (rf *Raft) becomeLeader() {
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+	rf.isLeader = true
+	for i := range rf.nextIndex {
+		rf.nextIndex[i] = rf.lastApplied+1
+	}
+	for i := range rf.matchIndex {
+		rf.matchIndex[i] = 0
+	}
+	// periodly heartbeat
+	go rf.heartBeatTicker()
+	go rf.syncLogTicker()
 }
 
 // send HeartBeat
@@ -502,6 +538,14 @@ func (rf *Raft) heartBeatTicker() {
 		rf.mu.Unlock()
 		rf.sendAllHeartbeat()
 		time.Sleep(time.Millisecond * 100)
+	}
+}
+
+// TODO sync log ticker
+func (rf *Raft) syncLogTicker() {
+	for rf.isLeader{
+		time.Sleep(time.Millisecond * 10)
+
 	}
 }
 

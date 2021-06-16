@@ -99,7 +99,6 @@ implement selection and heart beat
 5. leader win the selection, but leader term is less than a candidate
    + so what to do for this follower?
    + leader should update term when vote and heartbeat
-   
 ### 5 Result
 ![](https://gitee.com/agaogao/photobed/raw/master/img/20210601225039.png)
 
@@ -125,30 +124,29 @@ implement append log
 + [ ] is log entry like appmsg
 + [ ] what is command interface{}?
 + [ ] logic
-   + leader: send log rpc to client
-   + client: state machine add command
-   + leader: wait for entry all replicated, apply the entry to state machine
-      + send commit to client
-   + leader: retry infinitely if followers not apply entry
+   + [ ] leader: send log rpc to client
+   + [ ] client: state machine add command
+   + [ ] leader: wait for entry all replicated, apply the entry to state machine
+      + [ ] send commit to client
+   + [ ] leader: retry infinitely if followers not apply entry
 + [ ] leader: apply and commit entry once apply by majority of servers.
-   + add all prev log created by prev leaders
+   + [ ] add all prev log created by prev leaders
 + [ ] leader: track highest index committed
-   + heartbeat will take this index
-   + client: learn this index and apply state machine
-   + client run command not change state machine?
-   + client receieves index and update state machine
-      + what if client has long distence with leader? how can he reach the index lastest?
+   + [ ] heartbeat will take this index
+   + [ ] client: learn this index and apply state machine
+   + [ ] client run command not change state machine?
+   + [ ] client receieves index and update state machine
+      + [ ] what if client has long distence with leader? how can he reach the index lastest?
 + [ ] client receive commit index, if index no this entry, then not commit
-   + it guarantees client run command must be committed
-   + it guarantees follower log is same with the leader
+   + [ ] it guarantees client run command must be committed
+   + [ ] it guarantees follower log is same with the leader
 + [ ] if clients logs different with the leader, get rid of logs from clients
-   + return reject and delete log after the next index from heartbeat
-   + leader retry with nextindex--, but not delete log
-   + how they check if logs are consistency?
-   + can check term to optimization communication time
+   + [ ] return reject and delete log after the next index from heartbeat
+   + [ ] leader retry with nextindex--, but not delete log
+   + [ ] how they check if logs are consistency?
+   + [ ] can check term to optimization communication time
 + [ ] so majority of servers apply can be commit 
-   + what about the minority of servers not be apply log? Ask log while send appendentryRPC?
-   
+   + [ ] what about the minority of servers not be apply log? Ask log while send appendentryRPC?
 
 ### 5 Result
 
