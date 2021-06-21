@@ -121,8 +121,11 @@ implement append log
 
 ### 4 Problems and Solve
 
-+ [ ] is log entry like appmsg
-+ [ ] what is command interface{}?
++ [x] is log entry like appmsg
+   + [x] no apply msg is not log entry
++ [x] what is command interface{}?
+   + [x] don't need to care just store it
++ [ ] will start function waiting for log commit end?
 + [ ] logic
    + [ ] leader: send log rpc to client
    + [ ] client: state machine add command
@@ -147,6 +150,7 @@ implement append log
    + [ ] can check term to optimization communication time
 + [ ] so majority of servers apply can be commit 
    + [ ] what about the minority of servers not be apply log? Ask log while send appendentryRPC?
++ [ ] same index and same term can ensure same command?
 
 ### 5 Result
 
@@ -158,3 +162,4 @@ implement append log
 + Once follower is down, leader will try appendentry rpc infinitely and won't stop.
 + One time can append a piece of command
 + logs delete if not match
++ first reboot of leader may re transfer all log to others

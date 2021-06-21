@@ -55,6 +55,8 @@ type ApplyMsg struct {
 type Entry struct {
 	Term    int
 	Command interface{}
+	// only leader update
+	ApplyPeerNum int
 }
 
 //
@@ -322,7 +324,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	for _, entry := range args.Entries {
 		tempIndex++
 		if flag == 0 {
-			if len(rf.log) > tempIndex && rf.log[tempIndex+1].Term != entry.Term {
+			if len(rf.log) > tempIndex+1 && rf.log[tempIndex+1].Term != entry.Term {
 				rf.log = rf.log[:(tempIndex)]
 				flag = 1
 			}
@@ -332,9 +334,9 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	if args.LeaderCommit > rf.commitIndex {
-		if args.LeaderCommit>tempIndex{
+		if args.LeaderCommit > tempIndex {
 			rf.commitIndex = tempIndex
-		}else{
+		} else {
 			rf.commitIndex = args.LeaderCommit
 		}
 	}
@@ -374,7 +376,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		isLeader = false
 		return index, term, isLeader
 	}
-	entry := Entry{rf.currentTerm, command}
+	entry := Entry{rf.currentTerm, command, 0}
 	rf.log = append(rf.log, entry)
 	// if it is
 	index = len(rf.log) - 1
@@ -515,7 +517,7 @@ func (rf *Raft) becomeLeader() {
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
-		rf.nextIndex[i] = rf.lastApplied+1
+		rf.nextIndex[i] = rf.lastApplied + 1
 	}
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = 0
@@ -543,9 +545,42 @@ func (rf *Raft) heartBeatTicker() {
 
 // TODO sync log ticker
 func (rf *Raft) syncLogTicker() {
-	for rf.isLeader{
+	for {
+		rf.mu.Lock()
+		if rf.isLeader{
+			rf.mu.Unlock()
+			break
+		}
+		rf.mu.Unlock()
 		time.Sleep(time.Millisecond * 10)
-
+		rf.mu.Lock()
+		for i, peer := range rf.peers {
+			go func(i int, peer *labrpc.ClientEnd) {
+				rf.mu.Lock()
+				args := AppendEntriesArgs{}
+				lastedEntryIndex := len(rf.log) - 1
+				args.Entries = rf.log[rf.nextIndex[i]:]
+				args.LeaderCommit = rf.commitIndex
+				args.LeaderId = rf.me
+				args.PrevLogIndex = rf.nextIndex[i] - 1
+				args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
+				args.Term = rf.currentTerm
+				reply := AppendEntriesReply{}
+				rf.mu.Unlock()
+				ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
+				rf.mu.Lock()
+				if ok && reply.Success {
+					for j := rf.nextIndex[i]; j <= lastedEntryIndex; j++ {
+						rf.log[j].ApplyPeerNum++
+						if rf.log[j].ApplyPeerNum > len(rf.peers)/2 && rf.commitIndex == j-1 {
+							rf.commitIndex++
+						}
+					}
+				}
+				rf.mu.Unlock()
+			}(i, peer)
+		}
+		rf.mu.Unlock()
 	}
 }
 
