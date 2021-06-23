@@ -312,6 +312,9 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		return
 	}
 
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" entryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
+		len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
+
 	// implementation 2
 	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
 		reply.Success = false
@@ -514,7 +517,6 @@ func (rf *Raft) ticker() {
 }
 
 func (rf *Raft) becomeLeader() {
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
 		rf.nextIndex[i] = rf.lastApplied + 1
@@ -545,13 +547,16 @@ func (rf *Raft) heartBeatTicker() {
 
 // TODO sync log ticker
 func (rf *Raft) syncLogTicker() {
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start sync log ticker\n", rf.me)
 	for {
 		rf.mu.Lock()
-		if rf.isLeader{
+		if !rf.isLeader {
 			rf.mu.Unlock()
 			break
 		}
 		rf.mu.Unlock()
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d sync log to all\n", rf.me)
+
 		time.Sleep(time.Millisecond * 10)
 		rf.mu.Lock()
 		for i, peer := range rf.peers {
@@ -574,6 +579,7 @@ func (rf *Raft) syncLogTicker() {
 						rf.log[j].ApplyPeerNum++
 						if rf.log[j].ApplyPeerNum > len(rf.peers)/2 && rf.commitIndex == j-1 {
 							rf.commitIndex++
+							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d get applyPeerNum %d increase to commitindex %d\n", rf.me, rf.log[rf.commitIndex].ApplyPeerNum,rf.commitIndex)
 						}
 					}
 				}
