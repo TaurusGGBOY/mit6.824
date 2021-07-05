@@ -55,8 +55,6 @@ type ApplyMsg struct {
 type Entry struct {
 	Term    int
 	Command interface{}
-	// only leader update
-	ApplyPeerNum int
 }
 
 //
@@ -85,8 +83,8 @@ type Raft struct {
 	lastApplied int
 
 	// Volatile leader
-	nextIndex  []int
-	matchIndex []int
+	nextIndex  []int // update once it applied
+	matchIndex []int // update once reply to leader
 
 	receiveHeartbeat bool
 }
@@ -312,8 +310,10 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		return
 	}
 
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" entryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
 		len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
+		rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
 
 	// implementation 2
 	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
@@ -379,7 +379,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		isLeader = false
 		return index, term, isLeader
 	}
-	entry := Entry{rf.currentTerm, command, 0}
+	entry := Entry{rf.currentTerm, command}
 	rf.log = append(rf.log, entry)
 	// if it is
 	index = len(rf.log) - 1
@@ -519,7 +519,7 @@ func (rf *Raft) ticker() {
 func (rf *Raft) becomeLeader() {
 	rf.isLeader = true
 	for i := range rf.nextIndex {
-		rf.nextIndex[i] = rf.lastApplied + 1
+		rf.nextIndex[i] = len(rf.log)
 	}
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = 0
@@ -555,11 +555,15 @@ func (rf *Raft) syncLogTicker() {
 			break
 		}
 		rf.mu.Unlock()
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d sync log to all\n", rf.me)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d sync log to all\n", rf.me)
 
 		time.Sleep(time.Millisecond * 10)
 		rf.mu.Lock()
+		me := rf.me
 		for i, peer := range rf.peers {
+			if i == me || rf.lastApplied < rf.nextIndex[i] {
+				continue
+			}
 			go func(i int, peer *labrpc.ClientEnd) {
 				rf.mu.Lock()
 				args := AppendEntriesArgs{}
@@ -575,13 +579,25 @@ func (rf *Raft) syncLogTicker() {
 				ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
 				rf.mu.Lock()
 				if ok && reply.Success {
-					for j := rf.nextIndex[i]; j <= lastedEntryIndex; j++ {
-						rf.log[j].ApplyPeerNum++
-						if rf.log[j].ApplyPeerNum > len(rf.peers)/2 && rf.commitIndex == j-1 {
+					// update commitIndex
+					// TODO monotonically?
+					rf.matchIndex[i]++
+					// update nextIndex
+					rf.nextIndex[i] = lastedEntryIndex + len(args.Entries)
+					for j := rf.commitIndex + 1; j <= lastedEntryIndex; j++ {
+						count := 0
+						for k, _ := range rf.peers {
+							if rf.matchIndex[k] >= j {
+								count++
+							}
+						}
+						if count > len(rf.peers)/2 && rf.log[j].Term == rf.currentTerm {
 							rf.commitIndex++
-							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d get applyPeerNum %d increase to commitindex %d\n", rf.me, rf.log[rf.commitIndex].ApplyPeerNum,rf.commitIndex)
+							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d get applyPeerNum %d increase to commitindex %d\n", rf.me, count, rf.commitIndex)
 						}
 					}
+				} else {
+					// TODO if fail because inconsistency decrement nextIndex and retry
 				}
 				rf.mu.Unlock()
 			}(i, peer)
