@@ -193,6 +193,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 				if d.Decode(&v) != nil {
 					log.Fatalf("decode error\n")
 				}
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"applyCh has message:%d, %d\n", i, m.SnapshotIndex)
 				cfg.logs[i][m.SnapshotIndex] = v
 				lastApplied = m.SnapshotIndex
 			}
@@ -441,6 +442,8 @@ func (cfg *config) nCommitted(index int) (int, interface{}) {
 
 		cfg.mu.Lock()
 		cmd1, ok := cfg.logs[i][index]
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"index: %d, len:%d\n", i, len(cfg.logs[i]))
+
 		cfg.mu.Unlock()
 
 		if ok {
@@ -534,6 +537,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 						return index
 					}
 				}
+				// cfg.t.Fatalf(time.Now().Format("2006-01-02 15:04:05")+"nd:%d, want: %v, got: %v end\n", nd, cmd, cmd1)
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {

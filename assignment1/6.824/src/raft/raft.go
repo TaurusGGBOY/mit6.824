@@ -87,6 +87,8 @@ type Raft struct {
 	matchIndex []int // update once reply to leader
 
 	receiveHeartbeat bool
+
+	applyCh chan ApplyMsg
 }
 
 //
@@ -310,11 +312,12 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		rf.isLeader = false
 	}
 
-	if len(args.Entries)>0{
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
+	if len(args.Entries) > 0 {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
 			len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
 			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %s\n", rf.log)
 	}
 
 	// implementation 2
@@ -332,12 +335,15 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 			if len(rf.log) > tempIndex+1 && rf.log[tempIndex+1].Term != entry.Term {
 				rf.log = rf.log[:(tempIndex)]
 				flag = 1
+			} else {
+				rf.log = append(rf.log, entry)
 			}
 		} else {
 			rf.log = append(rf.log, entry)
 		}
 	}
 
+	// update commitIndex
 	if args.LeaderCommit > rf.commitIndex {
 		if args.LeaderCommit > tempIndex {
 			rf.commitIndex = tempIndex
@@ -347,12 +353,26 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	// update lastApplied
-	if rf.commitIndex > rf.lastApplied {
-		rf.lastApplied = rf.commitIndex
+	for rf.commitIndex > rf.lastApplied {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower applyindex++\n")
+		rf.lastApplied++
 		// what is apply log[lastApplied] to state machine
 		// it is apply
+		applyMsg:=ApplyMsg{}
+		applyMsg.CommandValid = true
+		applyMsg.CommandIndex=rf.lastApplied
+		applyMsg.Command=rf.log[applyMsg.CommandIndex]
+		rf.applyCh <- applyMsg
 	}
 	reply.Success = true
+	if len(args.Entries) > 0 {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + "ReceiveAppendEntries: end\n")
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
+			len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
+			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %s\n", rf.log)
+	}
 }
 
 //
@@ -569,6 +589,8 @@ func (rf *Raft) syncLogTicker() {
 			}
 			go func(i int, peer *labrpc.ClientEnd) {
 				rf.mu.Lock()
+				defer rf.mu.Unlock()
+
 				args := AppendEntriesArgs{}
 				lastedEntryIndex := len(rf.log) - 1
 				args.Entries = rf.log[rf.nextIndex[i]:]
@@ -578,9 +600,7 @@ func (rf *Raft) syncLogTicker() {
 				args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
 				args.Term = rf.currentTerm
 				reply := AppendEntriesReply{}
-				rf.mu.Unlock()
 				ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
-				rf.mu.Lock()
 				if ok && reply.Success {
 					// update commitIndex
 					// TODO monotonically?
@@ -598,9 +618,19 @@ func (rf *Raft) syncLogTicker() {
 							rf.commitIndex++
 							// apply is end state, commit is not
 							if rf.commitIndex > rf.lastApplied {
+								fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" applyindex++\n")
 								rf.lastApplied++
+
+								applyMsg:=ApplyMsg{}
+								applyMsg.CommandValid = true
+								applyMsg.CommandIndex=rf.lastApplied
+								applyMsg.Command=rf.log[applyMsg.CommandIndex]
+								rf.applyCh <- applyMsg
+
 								// TODO whether right or not
+								rf.mu.Unlock()
 								rf.sendAllHeartbeat()
+								rf.mu.Lock()
 							}
 							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d get applyPeerNum %d increase to commitindex %d\n", rf.me, count, rf.commitIndex)
 						}
@@ -608,7 +638,6 @@ func (rf *Raft) syncLogTicker() {
 				} else {
 					// TODO if fail because inconsistency decrement nextIndex and retry
 				}
-				rf.mu.Unlock()
 			}(i, peer)
 		}
 		rf.mu.Unlock()
@@ -616,23 +645,31 @@ func (rf *Raft) syncLogTicker() {
 }
 
 func (rf *Raft) sendAllHeartbeat() {
-	args := AppendEntriesArgs{}
 	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	args := AppendEntriesArgs{}
 	args.Term = rf.currentTerm
 	args.LeaderId = rf.me
-	rf.mu.Unlock()
+	args.LeaderCommit = rf.commitIndex
 	args.Entries = make([]Entry, 0)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d send all heartbeat\n", args.LeaderId)
 
 	for i := range rf.peers {
 		if i == rf.me {
 			continue
 		}
 		go func(i int) {
-			reply := AppendEntriesReply{}
-			// TODO if heartbeat false
-			rf.sendAppendEntries(i, &args, &reply)
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
+			args.PrevLogIndex = rf.nextIndex[i] - 1
+			args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
+
+			reply := AppendEntriesReply{}
+
+			// TODO if heartbeat false
+			rf.sendAppendEntries(i, &args, &reply)
+
 			if reply.Term > rf.currentTerm {
 				rf.currentTerm = reply.Term
 			}
@@ -675,6 +712,7 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.log = append(rf.log, Entry{})
 	rf.receiveHeartbeat = false
 
+	rf.applyCh = applyCh
 	// start ticker goroutine to start elections
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
 	go rf.ticker()
