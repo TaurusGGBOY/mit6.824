@@ -151,7 +151,19 @@ implement append log
 + [ ] so majority of servers apply can be commit 
    + [ ] what about the minority of servers not be apply log? Ask log while send appendentryRPC?
 + [ ] same index and same term can ensure same command?
-
++ [x] printf shows followers' logs have been commited and applied to state machine, but in test script, rf.log has been not applied.
+   + [ ] if there is some special points in snapshot scheme?
+      + [ ] yes applyCh
+   + [ ] lastApplied is not really applied to state mechine?
+      + [ ] yes appyCh
++ [ ] fail test2B TestFailAgree2B
+   + [ ] one follower down
+      + [ ] leader can't receive heartbeat
+      + [ ] leader dead lock
+      + [ ] follower think leader is down
+      + [ ] follower start selection
+      + [ ] follower request vote
+      + [ ] no one response
 ### 5 Result
 
 
