@@ -8,7 +8,9 @@ package raft
 // test with the original before submitting.
 //
 
-import "6.824/labgob"
+import (
+	"6.824/labgob"
+)
 import "6.824/labrpc"
 import "bytes"
 import "log"
@@ -530,6 +532,7 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 			t1 := time.Now()
 			for time.Since(t1).Seconds() < 2 {
 				nd, cmd1 := cfg.nCommitted(index)
+				//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"nd:%d, want: %v, got: %v end, cmd type: %s, cmd1 type: %s\n", nd, cmd, cmd1, reflect.TypeOf(cmd),reflect.TypeOf(cmd1))
 				if nd > 0 && nd >= expectedServers {
 					// committed
 					if cmd1 == cmd {
@@ -537,7 +540,6 @@ func (cfg *config) one(cmd interface{}, expectedServers int, retry bool) int {
 						return index
 					}
 				}
-				// cfg.t.Fatalf(time.Now().Format("2006-01-02 15:04:05")+"nd:%d, want: %v, got: %v end\n", nd, cmd, cmd1)
 				time.Sleep(20 * time.Millisecond)
 			}
 			if retry == false {
