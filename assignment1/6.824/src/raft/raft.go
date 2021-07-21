@@ -227,9 +227,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.currentTerm = args.Term
 		reply.Term = rf.currentTerm
 		rf.votedFor = -1
+		rf.isLeader = false
 	}
 
-	// TODO what about the second term
+	// 5.4.2 selection restriction
 	if len(rf.log) <= args.LastLogIndex && (rf.votedFor == args.CandidateId || rf.votedFor == -1) {
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
@@ -288,7 +289,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	reply.Term = rf.currentTerm
 
 	if args.Term < rf.currentTerm {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d\n", rf.me, args.LeaderId)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
 		reply.Success = false
 		return
 	}
@@ -320,10 +321,19 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %s\n", rf.log)
 	}
 
+	// if log.len==1 continue
 	// implementation 2
-	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
-		reply.Success = false
-		return
+	// TODO 2021.7.21 mod this place to suit constance
+	if len(rf.log) > 1 {
+		if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
+			reply.Success = false
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" return false1\n")
+			return
+		}else if len(rf.log)<= args.PrevLogIndex{
+			reply.Success = false
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" return false2\n")
+			return
+		}
 	}
 
 	tempIndex := args.PrevLogIndex
@@ -353,15 +363,15 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	// update lastApplied
-	for rf.commitIndex > rf.lastApplied {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower applyindex++\n")
+	for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 < len(rf.log) {
 		rf.lastApplied++
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d\n", rf.me, rf.lastApplied)
 		// what is apply log[lastApplied] to state machine
 		// it is apply
-		applyMsg:=ApplyMsg{}
+		applyMsg := ApplyMsg{}
 		applyMsg.CommandValid = true
-		applyMsg.CommandIndex=rf.lastApplied
-		applyMsg.Command=rf.log[applyMsg.CommandIndex].Command
+		applyMsg.CommandIndex = rf.lastApplied
+		applyMsg.Command = rf.log[applyMsg.CommandIndex].Command
 		rf.applyCh <- applyMsg
 	}
 	reply.Success = true
@@ -410,7 +420,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// if it is
 	index = len(rf.log) - 1
 	term = rf.currentTerm
-	//fmt.Printf("start command: command %d\n", command)
+	fmt.Printf("leader start command: command %d\n", command)
 	return index, term, isLeader
 }
 
@@ -453,7 +463,7 @@ func (rf *Raft) ticker() {
 			rf.mu.Unlock()
 			continue
 		}
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection\n", rf.me)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection\n", rf.me)
 
 		// TODO consider the situation that long time no leader
 		// not receive heart beat and start a selection
@@ -552,12 +562,12 @@ func (rf *Raft) becomeLeader() {
 		rf.matchIndex[i] = 0
 	}
 	// periodly heartbeat
-	go rf.heartBeatTicker()
+	go rf.heartbeatTicker()
 	go rf.syncLogTicker()
 }
 
 // send HeartBeat
-func (rf *Raft) heartBeatTicker() {
+func (rf *Raft) heartbeatTicker() {
 	for rf.killed() == false {
 		rf.mu.Lock()
 		if !rf.isLeader {
@@ -588,6 +598,9 @@ func (rf *Raft) syncLogTicker() {
 		rf.mu.Lock()
 		me := rf.me
 		for i, peer := range rf.peers {
+			if !rf.isLeader {
+				break
+			}
 			if i == me || len(rf.log)-1 < rf.nextIndex[i] {
 				continue
 			}
@@ -607,12 +620,24 @@ func (rf *Raft) syncLogTicker() {
 				rf.mu.Unlock()
 				ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
 				rf.mu.Lock()
-				if ok && reply.Success {
+				if ok {
+					// if there is some one reconnect with high term then exit leader state
+					if reply.Term > rf.currentTerm {
+						rf.currentTerm = reply.Term
+						rf.isLeader = false
+						return
+					}
+
+					if !reply.Success {
+						rf.nextIndex[i]--
+						return
+					}
+
 					// update commitIndex
 					// TODO monotonically?
 					rf.matchIndex[i]++
-					// update nextIndex
-					rf.nextIndex[i] = lastedEntryIndex + len(args.Entries)
+					// TODO update nextIndex it equals to lastedEntryIndex+1?
+					rf.nextIndex[i] = lastedEntryIndex + 1
 					for j := rf.commitIndex + 1; j <= lastedEntryIndex; j++ {
 						count := 0
 						for k, _ := range rf.peers {
@@ -624,13 +649,12 @@ func (rf *Raft) syncLogTicker() {
 							rf.commitIndex++
 							// apply is end state, commit is not
 							if rf.commitIndex > rf.lastApplied {
-								fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" applyindex++\n")
 								rf.lastApplied++
-
-								applyMsg:=ApplyMsg{}
+								fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d\n", rf.me, rf.lastApplied)
+								applyMsg := ApplyMsg{}
 								applyMsg.CommandValid = true
-								applyMsg.CommandIndex=rf.lastApplied
-								applyMsg.Command=rf.log[applyMsg.CommandIndex].Command
+								applyMsg.CommandIndex = rf.lastApplied
+								applyMsg.Command = rf.log[applyMsg.CommandIndex].Command
 								rf.applyCh <- applyMsg
 
 								go rf.sendAllHeartbeat()
@@ -651,23 +675,25 @@ func (rf *Raft) sendAllHeartbeat() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	args := AppendEntriesArgs{}
-	args.Term = rf.currentTerm
-	args.LeaderId = rf.me
-	args.LeaderCommit = rf.commitIndex
-	args.Entries = make([]Entry, 0)
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d send all heartbeat\n", args.LeaderId)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d send all heartbeat\n", rf.me)
 
 	for i := range rf.peers {
+		if !rf.isLeader {
+			break
+		}
 		if i == rf.me {
 			continue
 		}
 		go func(i int) {
 			rf.mu.Lock()
 			// TODO wrong with nextIndex
+			args := AppendEntriesArgs{}
+			args.Term = rf.currentTerm
+			args.LeaderId = rf.me
+			args.LeaderCommit = rf.commitIndex
+			args.Entries = make([]Entry, 0)
 			args.PrevLogIndex = rf.nextIndex[i] - 1
 			args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
-
 			reply := AppendEntriesReply{}
 			rf.mu.Unlock()
 			// TODO if heartbeat false
@@ -676,6 +702,7 @@ func (rf *Raft) sendAllHeartbeat() {
 			rf.mu.Lock()
 			if reply.Term > rf.currentTerm {
 				rf.currentTerm = reply.Term
+				rf.isLeader = false
 			}
 			rf.mu.Unlock()
 		}(i)
