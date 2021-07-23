@@ -175,3 +175,4 @@ implement append log
 + One time can append a piece of command
 + logs delete if not match
 + first reboot of leader may re transfer all log to others
++ once follower down, selection will hold if follower recovers. It costs a lot.

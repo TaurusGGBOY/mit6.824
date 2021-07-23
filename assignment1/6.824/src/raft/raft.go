@@ -219,6 +219,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	reply.Term = rf.currentTerm
 
+	// election restriction 1 bigger term win
+	// election restriction 2 same term longer index win
 	if args.Term < rf.currentTerm {
 		reply.VoteGranted = false
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
@@ -231,7 +233,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	// 5.4.2 selection restriction
-	if len(rf.log) <= args.LastLogIndex && (rf.votedFor == args.CandidateId || rf.votedFor == -1) {
+	if rf.votedFor == args.CandidateId || rf.votedFor == -1 {
+		if len(rf.log) > 1 && (args.LastLogTerm < rf.log[len(rf.log)-1].Term || (rf.log[len(rf.log)-1].Term == args.LastLogTerm && len(rf.log)-1 > args.LastLogIndex)) {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" candidate:%d, can term:%d, can index:%d, my index:\n", rf.me, rf.votedFor, args.Term)
+			return
+		}
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d for term %d\n", rf.me, rf.votedFor, args.Term)
@@ -313,50 +319,45 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		rf.isLeader = false
 	}
 
-	if len(args.Entries) > 0 {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
-			len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
-			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %s\n", rf.log)
-	}
+	//if len(args.Entries) > 0 {
+	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
+	//		len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
+	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
+	//		rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
+	//	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %s\n", rf.log)
+	//}
 
 	// if log.len==1 continue
 	// implementation 2
-	// TODO 2021.7.21 mod this place to suit constance
 	if len(rf.log) > 1 {
 		if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
 			reply.Success = false
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" return false1\n")
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " return false1\n")
 			return
-		}else if len(rf.log)<= args.PrevLogIndex{
+		} else if len(rf.log) <= args.PrevLogIndex {
 			reply.Success = false
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" return false2\n")
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, prevLogIndex:%d, return false2, log:%v\n", rf.me, args.PrevLogIndex, rf.log)
 			return
 		}
 	}
 
-	tempIndex := args.PrevLogIndex
-	flag := 0
-	// implementation 3 & 4
-	for _, entry := range args.Entries {
-		tempIndex++
-		if flag == 0 {
-			if len(rf.log) > tempIndex+1 && rf.log[tempIndex+1].Term != entry.Term {
-				rf.log = rf.log[:(tempIndex)]
-				flag = 1
-			} else {
-				rf.log = append(rf.log, entry)
+	if len(args.Entries) > 0 {
+		removeIndex := args.PrevLogIndex + 1
+		for ; removeIndex < len(rf.log) && removeIndex < args.PrevLogIndex+len(args.Entries); removeIndex++ {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" removeIndex:%d, args.prevLogIndex:%d, len:%d\n", removeIndex, args.PrevLogIndex, len(args.Entries))
+
+			if rf.log[removeIndex].Term != args.Entries[removeIndex-args.PrevLogIndex-1].Term {
+				break
 			}
-		} else {
-			rf.log = append(rf.log, entry)
 		}
+		rf.log = rf.log[:removeIndex]
+		rf.log = append(rf.log, args.Entries[(removeIndex-args.PrevLogIndex-1):]...)
 	}
 
 	// update commitIndex
 	if args.LeaderCommit > rf.commitIndex {
-		if args.LeaderCommit > tempIndex {
-			rf.commitIndex = tempIndex
+		if args.LeaderCommit > len(rf.log)-1 {
+			rf.commitIndex = len(rf.log) - 1
 		} else {
 			rf.commitIndex = args.LeaderCommit
 		}
@@ -381,7 +382,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 			len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
 			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %s\n", rf.log)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %v\n", rf.log)
 	}
 }
 
@@ -412,10 +413,14 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		isLeader = false
 		return index, term, isLeader
 	}
+	//if rf.log[len(rf.log)-1].Command != command {
 	entry := Entry{rf.currentTerm, command}
 	rf.log = append(rf.log, entry)
+	//}else{
+	//	rf.log[len(rf.log)-1].Term = rf.currentTerm
+	//}
 
-	rf.matchIndex[rf.me]++
+	rf.matchIndex[rf.me] = len(rf.log) - 1
 
 	// if it is
 	index = len(rf.log) - 1
@@ -466,7 +471,7 @@ func (rf *Raft) ticker() {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection\n", rf.me)
 
 		// TODO consider the situation that long time no leader
-		// not receive heart beat and start a selection
+		// not receive heart beat and start a se vglection
 		args := RequestVoteArgs{}
 		args.CandidateId = rf.me
 		args.LastLogIndex = len(rf.log)
@@ -561,6 +566,7 @@ func (rf *Raft) becomeLeader() {
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = 0
 	}
+	rf.matchIndex[rf.me] = len(rf.log) - 1
 	// periodly heartbeat
 	go rf.heartbeatTicker()
 	go rf.syncLogTicker()
@@ -595,13 +601,14 @@ func (rf *Raft) syncLogTicker() {
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d sync log to all\n", rf.me)
 
 		time.Sleep(time.Millisecond * 10)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d syncing log ticker\n", rf.me)
 		rf.mu.Lock()
 		me := rf.me
 		for i, peer := range rf.peers {
 			if !rf.isLeader {
 				break
 			}
-			if i == me || len(rf.log)-1 < rf.nextIndex[i] {
+			if i == me || rf.matchIndex[i] >= len(rf.log)-1 {
 				continue
 			}
 			go func(i int, peer *labrpc.ClientEnd) {
@@ -617,38 +624,44 @@ func (rf *Raft) syncLogTicker() {
 				args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
 				args.Term = rf.currentTerm
 				reply := AppendEntriesReply{}
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send log to %d, %v\n", rf.me, i, args.Entries)
 				rf.mu.Unlock()
 				ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
 				rf.mu.Lock()
 				if ok {
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %v reply success\n", reply.Success)
 					// if there is some one reconnect with high term then exit leader state
 					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
 						rf.isLeader = false
+						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" in ???? %d fail and nextIndex-- to %d\n", i, rf.nextIndex[i])
 						return
 					}
 
-					if !reply.Success {
+					if reply.Success == false {
 						rf.nextIndex[i]--
+						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d fail and nextIndex-- to %d\n", i, rf.nextIndex[i])
 						return
 					}
 
 					// update commitIndex
 					// TODO monotonically?
-					rf.matchIndex[i]++
+					rf.matchIndex[i] = lastedEntryIndex
 					// TODO update nextIndex it equals to lastedEntryIndex+1?
-					rf.nextIndex[i] = lastedEntryIndex + 1
-					for j := rf.commitIndex + 1; j <= lastedEntryIndex; j++ {
+					rf.nextIndex[i] = rf.matchIndex[i] + 1
+					for j := rf.commitIndex + 1; j <= lastedEntryIndex && j < len(rf.log); j++ {
 						count := 0
 						for k, _ := range rf.peers {
 							if rf.matchIndex[k] >= j {
 								count++
 							}
 						}
+						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, index:%d, count:%d, matchIndex:%v\n", rf.me, j, count, rf.matchIndex)
 						if count > len(rf.peers)/2 && rf.log[j].Term == rf.currentTerm {
 							rf.commitIndex++
+							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commitIndex to %d\n", rf.me, rf.commitIndex)
 							// apply is end state, commit is not
-							if rf.commitIndex > rf.lastApplied {
+							for rf.commitIndex > rf.lastApplied {
 								rf.lastApplied++
 								fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d\n", rf.me, rf.lastApplied)
 								applyMsg := ApplyMsg{}
@@ -662,8 +675,6 @@ func (rf *Raft) syncLogTicker() {
 							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader %d get applyPeerNum %d increase to commitindex %d\n", rf.me, count, rf.commitIndex)
 						}
 					}
-				} else {
-					// TODO if fail because inconsistency decrement nextIndex and retry
 				}
 			}(i, peer)
 		}
