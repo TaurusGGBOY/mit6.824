@@ -225,7 +225,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = false
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
 		return
-	} else {
+	} else if args.Term > rf.currentTerm {
 		rf.currentTerm = args.Term
 		reply.Term = rf.currentTerm
 		rf.votedFor = -1
@@ -236,6 +236,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	if rf.votedFor == args.CandidateId || rf.votedFor == -1 {
 		if len(rf.log) > 1 && (args.LastLogTerm < rf.log[len(rf.log)-1].Term || (rf.log[len(rf.log)-1].Term == args.LastLogTerm && len(rf.log)-1 > args.LastLogIndex)) {
 			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" candidate:%d, can term:%d, can index:%d, my index:\n", rf.me, rf.votedFor, args.Term)
+			reply.VoteGranted = false
 			return
 		}
 		reply.VoteGranted = true
@@ -243,6 +244,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d for term %d\n", rf.me, rf.votedFor, args.Term)
 		return
 	}
+	reply.VoteGranted = false
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d not vote for you but vote for %d\n", rf.me, rf.votedFor)
 }
 
@@ -294,29 +296,34 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d with term %d\n", rf.me, args.LeaderId, args.Term)
 	reply.Term = rf.currentTerm
 
-	if args.Term < rf.currentTerm {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
-		reply.Success = false
-		return
-	}
-
 	// it's heartbeat
 	// also use to reply
 	// no use to distinguish heart beart
 	// high term heart beat
 	if rf.currentTerm > args.Term {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
+		reply.Success = false
+		return
+	}
+
+	if rf.commitIndex > args.LeaderCommit {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong leader commit from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.commitIndex, args.LeaderCommit)
 		reply.Success = false
 		return
 	}
 
 	rf.receiveHeartbeat = true
-	rf.votedFor = -1
-	rf.currentTerm = args.Term
-	reply.Term = rf.currentTerm
+
+	if rf.currentTerm < args.Term {
+		rf.votedFor = -1
+		rf.currentTerm = args.Term
+	}
 	// only term > me then give up leader
 	if rf.isLeader {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit leader and give leader to %d at term %d\n", rf.me, args.LeaderId, args.Term)
 		rf.isLeader = false
+		reply.Success = false
+		return
 	}
 
 	//if len(args.Entries) > 0 {
@@ -344,12 +351,12 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	if len(args.Entries) > 0 {
 		removeIndex := args.PrevLogIndex + 1
 		for ; removeIndex < len(rf.log) && removeIndex < args.PrevLogIndex+len(args.Entries); removeIndex++ {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" removeIndex:%d, args.prevLogIndex:%d, len:%d\n", removeIndex, args.PrevLogIndex, len(args.Entries))
 
 			if rf.log[removeIndex].Term != args.Entries[removeIndex-args.PrevLogIndex-1].Term {
 				break
 			}
 		}
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" removeIndex:%d, args.prevLogIndex:%d, len:%d\n", removeIndex, args.PrevLogIndex, len(args.Entries))
 		rf.log = rf.log[:removeIndex]
 		rf.log = append(rf.log, args.Entries[(removeIndex-args.PrevLogIndex-1):]...)
 	}
@@ -364,9 +371,10 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	// update lastApplied
+	// TODO before confirm apply, one should confirm if they are the same
 	for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 < len(rf.log) {
 		rf.lastApplied++
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d\n", rf.me, rf.lastApplied)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.log[rf.lastApplied], rf.log)
 		// what is apply log[lastApplied] to state machine
 		// it is apply
 		applyMsg := ApplyMsg{}
@@ -425,7 +433,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// if it is
 	index = len(rf.log) - 1
 	term = rf.currentTerm
-	fmt.Printf("leader start command: command %d\n", command)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
 	return index, term, isLeader
 }
 
@@ -468,7 +476,7 @@ func (rf *Raft) ticker() {
 			rf.mu.Unlock()
 			continue
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection\n", rf.me)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection in term %d\n", rf.me, rf.currentTerm)
 
 		// TODO consider the situation that long time no leader
 		// not receive heart beat and start a se vglection
@@ -477,9 +485,8 @@ func (rf *Raft) ticker() {
 		args.LastLogIndex = len(rf.log)
 		args.LastLogTerm = rf.log[len(rf.log)-1].Term
 		rf.currentTerm++
-		rf.votedFor = -1
+		rf.votedFor = rf.me
 		args.Term = rf.currentTerm
-		rf.mu.Unlock()
 
 		// vote for self
 		count := 1
@@ -489,10 +496,12 @@ func (rf *Raft) ticker() {
 			if i == rf.me {
 				continue
 			}
-			rf.mu.Lock()
+			if rf.receiveHeartbeat || rf.isLeader {
+				return
+			}
 			go func(i int, currentTerm int) {
 				reply := RequestVoteReply{}
-				//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d for term %d\n", rf.me, i, args.Term)
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d for term %d\n", rf.me, i, args.Term)
 				//if !rf.sendRequestVote(i, &args, &reply) {
 				//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d can't get vote reply from %d for term %d\n", rf.me, i, args.Term)
 				//} else {
@@ -512,11 +521,8 @@ func (rf *Raft) ticker() {
 				}
 				rf.mu.Unlock()
 			}(i, rf.currentTerm)
-			rf.mu.Unlock()
 		}
 		// if timeout then stop
-
-		rf.mu.Lock()
 		go func(term int) {
 			wg.Wait()
 			rf.mu.Lock()
@@ -533,7 +539,8 @@ func (rf *Raft) ticker() {
 		}(rf.currentTerm)
 		rf.mu.Unlock()
 
-		time.Sleep(time.Millisecond * time.Duration(500))
+		time.Sleep(time.Millisecond * time.Duration(401))
+
 		rf.mu.Lock()
 		go func(term int) {
 			rf.mu.Lock()
@@ -550,9 +557,6 @@ func (rf *Raft) ticker() {
 			}
 			// condition3 when lose
 		}(rf.currentTerm)
-		rf.mu.Unlock()
-
-		rf.mu.Lock()
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker end\n", rf.me)
 		rf.mu.Unlock()
 	}
@@ -568,6 +572,7 @@ func (rf *Raft) becomeLeader() {
 	}
 	rf.matchIndex[rf.me] = len(rf.log) - 1
 	// periodly heartbeat
+	go rf.sendAllHeartbeat()
 	go rf.heartbeatTicker()
 	go rf.syncLogTicker()
 }
@@ -617,7 +622,9 @@ func (rf *Raft) syncLogTicker() {
 
 				args := AppendEntriesArgs{}
 				lastedEntryIndex := len(rf.log) - 1
-				args.Entries = rf.log[rf.nextIndex[i]:]
+				tempEntries := make([]Entry, len(rf.log)-rf.nextIndex[i])
+				copy(tempEntries, rf.log[rf.nextIndex[i]:])
+				args.Entries = tempEntries
 				args.LeaderCommit = rf.commitIndex
 				args.LeaderId = rf.me
 				args.PrevLogIndex = rf.nextIndex[i] - 1
@@ -634,13 +641,13 @@ func (rf *Raft) syncLogTicker() {
 					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
 						rf.isLeader = false
-						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" in ???? %d fail and nextIndex-- to %d\n", i, rf.nextIndex[i])
+						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d in ???? %d fail and nextIndex-- to %d\n", rf.me, i, rf.nextIndex[i])
 						return
 					}
 
 					if reply.Success == false {
 						rf.nextIndex[i]--
-						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d fail and nextIndex-- to %d\n", i, rf.nextIndex[i])
+						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d\n", rf.me, i, rf.nextIndex[i])
 						return
 					}
 
@@ -663,7 +670,7 @@ func (rf *Raft) syncLogTicker() {
 							// apply is end state, commit is not
 							for rf.commitIndex > rf.lastApplied {
 								rf.lastApplied++
-								fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d\n", rf.me, rf.lastApplied)
+								fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.log[rf.lastApplied], rf.log)
 								applyMsg := ApplyMsg{}
 								applyMsg.CommandValid = true
 								applyMsg.CommandIndex = rf.lastApplied
@@ -697,17 +704,22 @@ func (rf *Raft) sendAllHeartbeat() {
 		}
 		go func(i int) {
 			rf.mu.Lock()
-			// TODO wrong with nextIndex
 			args := AppendEntriesArgs{}
 			args.Term = rf.currentTerm
 			args.LeaderId = rf.me
-			args.LeaderCommit = rf.commitIndex
+			// TODO want if follower wrong log but with leaderCommit send to follower
+			// TODO once confirm one
 			args.Entries = make([]Entry, 0)
 			args.PrevLogIndex = rf.nextIndex[i] - 1
 			args.PrevLogTerm = rf.log[args.PrevLogIndex].Term
+			if rf.commitIndex > rf.matchIndex[i] {
+				args.LeaderCommit = rf.matchIndex[i]
+			} else {
+				args.LeaderCommit = rf.commitIndex
+			}
+
 			reply := AppendEntriesReply{}
 			rf.mu.Unlock()
-			// TODO if heartbeat false
 			rf.sendAppendEntries(i, &args, &reply)
 
 			rf.mu.Lock()

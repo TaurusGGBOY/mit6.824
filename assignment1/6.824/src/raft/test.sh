@@ -8,7 +8,7 @@ do
  if [ ${s:0:2} == 'ok' ]
  then
   echo "test $a Passed"
-  rm ./test/report_$a
+   rm ./test/report_$a
  else
   echo "test $a Failed"
  fi
