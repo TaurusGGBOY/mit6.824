@@ -164,10 +164,15 @@ implement append log
       + [ ] follower start selection
       + [ ] follower request vote
       + [ ] no one response
++ [ ] there are some probility that old leader rejoin and quit leader and then give leader to new one, new leader send commitIndex that allow old leader update last apply
+    + [ ] check information send to follower, lastapplymsg should be the same
 ### 5 Result
 
+![](https://gitee.com/agaogao/photobed/raw/master/img/20210726201812.png)
 
 ### 6 Cost time
+
+60-70h
 
 ## improve points
 
