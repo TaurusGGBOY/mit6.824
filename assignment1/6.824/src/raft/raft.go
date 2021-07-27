@@ -18,7 +18,11 @@ package raft
 //
 
 import (
+	"6.824/labgob"
+	"bytes"
+	"errors"
 	"fmt"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -129,40 +133,46 @@ func (rf *Raft) GetState() (int, bool) {
 func (rf *Raft) persist() {
 	// Your code here (2C).
 	// Example:
-	// w := new(bytes.Buffer)
-	// e := labgob.NewEncoder(w)
-	// e.Encode(rf.xxx)
-	// e.Encode(rf.yyy)
-	// data := w.Bytes()
-	// rf.persister.SaveRaftState(data)
-	//w := new(bytes.Buffer)
-	//e := labgob.NewEncoder(w)
-	//e.Encode(rf.xxx)
-	//e.Encode(rf.yyy)
-	//data := w.Bytes()
-	//rf.persister.SaveRaftState(data)
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(rf.currentTerm)
+	e.Encode(rf.votedFor)
+	e.Encode(rf.log)
+	e.Encode(rf.commitIndex)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d persist term:%d, voteFor:%d, log:%v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+	data := w.Bytes()
+	rf.persister.SaveRaftState(data)
 }
 
 //
 // restore previously persisted state.
 //
-func (rf *Raft) readPersist(data []byte) {
+func (rf *Raft) readPersist(data []byte) error {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
-		return
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get1\n", rf.me)
+		return errors.New("nothing get")
 	}
 	// Your code here (2C).
 	// Example:
-	// r := bytes.NewBuffer(data)
-	// d := labgob.NewDecoder(r)
-	// var xxx
-	// var yyy
-	// if d.Decode(&xxx) != nil ||
-	//    d.Decode(&yyy) != nil {
-	//   error...
-	// } else {
-	//   rf.xxx = xxx
-	//   rf.yyy = yyy
-	// }
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var currentTerm int
+	var votedFor int
+	var log []Entry
+	var commitIndex int
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil|| d.Decode(&commitIndex) != nil {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get2\n", rf.me)
+		return errors.New("nothing get")
+	} else {
+		rf.currentTerm = currentTerm
+		rf.votedFor = votedFor
+		rf.log = log
+		rf.commitIndex = commitIndex
+
+		rf.matchIndex[rf.me] = len(rf.log) - 1
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist term:%d, voteFor:%d, log:%v\n", rf.me, rf.currentTerm, rf.votedFor, rf.log)
+		return nil
+	}
 }
 
 //
@@ -230,18 +240,21 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = rf.currentTerm
 		rf.votedFor = -1
 		rf.isLeader = false
+		rf.persist()
 	}
 
 	// 5.4.2 selection restriction
 	if rf.votedFor == args.CandidateId || rf.votedFor == -1 {
 		if len(rf.log) > 1 && (args.LastLogTerm < rf.log[len(rf.log)-1].Term || (rf.log[len(rf.log)-1].Term == args.LastLogTerm && len(rf.log)-1 > args.LastLogIndex)) {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" candidate:%d, can term:%d, can index:%d, my index:\n", rf.me, rf.votedFor, args.Term)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d candidate:%d, can term:%d, can index:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.log[len(rf.log)-1].Term, len(rf.log)-1)
 			reply.VoteGranted = false
 			return
 		}
 		reply.VoteGranted = true
 		rf.votedFor = args.CandidateId
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to %d for term %d\n", rf.me, rf.votedFor, args.Term)
+		rf.persist()
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can term:%d, can index:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.log[len(rf.log)-1].Term, len(rf.log)-1)
+
 		return
 	}
 	reply.VoteGranted = false
@@ -317,6 +330,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	if rf.currentTerm < args.Term {
 		rf.votedFor = -1
 		rf.currentTerm = args.Term
+		rf.persist()
 	}
 	// only term > me then give up leader
 	if rf.isLeader {
@@ -359,6 +373,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" removeIndex:%d, args.prevLogIndex:%d, len:%d\n", removeIndex, args.PrevLogIndex, len(args.Entries))
 		rf.log = rf.log[:removeIndex]
 		rf.log = append(rf.log, args.Entries[(removeIndex-args.PrevLogIndex-1):]...)
+		rf.persist()
 	}
 
 	// update commitIndex
@@ -424,6 +439,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	//if rf.log[len(rf.log)-1].Command != command {
 	entry := Entry{rf.currentTerm, command}
 	rf.log = append(rf.log, entry)
+	rf.persist()
 	//}else{
 	//	rf.log[len(rf.log)-1].Term = rf.currentTerm
 	//}
@@ -482,11 +498,12 @@ func (rf *Raft) ticker() {
 		// not receive heart beat and start a se vglection
 		args := RequestVoteArgs{}
 		args.CandidateId = rf.me
-		args.LastLogIndex = len(rf.log)
-		args.LastLogTerm = rf.log[len(rf.log)-1].Term
+		args.LastLogIndex = len(rf.log) - 1
+		args.LastLogTerm = rf.log[args.LastLogIndex].Term
 		rf.currentTerm++
 		rf.votedFor = rf.me
 		args.Term = rf.currentTerm
+		rf.persist()
 
 		// vote for self
 		count := 1
@@ -518,6 +535,7 @@ func (rf *Raft) ticker() {
 				}
 				if reply.Term > rf.currentTerm {
 					rf.currentTerm = reply.Term
+					rf.persist()
 				}
 				rf.mu.Unlock()
 			}(i, rf.currentTerm)
@@ -757,14 +775,16 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.nextIndex = make([]int, len(rf.peers))
 
 	// initialize from state persisted before a crash
-	rf.readPersist(persister.ReadRaftState())
+	err := rf.readPersist(persister.ReadRaftState())
 
 	// TODO if can't get from persist then give them value
-	rf.currentTerm = 0
-	rf.votedFor = -1
-	// it's leading to the index start with 1 but there are 1 more log
-	rf.log = make([]Entry, 0)
-	rf.log = append(rf.log, Entry{})
+	if err != nil {
+		rf.currentTerm = 0
+		rf.votedFor = -1
+		// it's leading to the index start with 1 but there are 1 more log
+		rf.log = make([]Entry, 0)
+		rf.log = append(rf.log, Entry{})
+	}
 	rf.receiveHeartbeat = false
 
 	rf.applyCh = applyCh
