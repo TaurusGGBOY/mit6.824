@@ -181,3 +181,39 @@ implement append log
 + logs delete if not match
 + first reboot of leader may re transfer all log to others
 + once follower down, selection will hold if follower recovers. It costs a lot.
+
+## 2C
+
+### 1 Require
+
+implement persist
+
+### 2 TODO
+
++ [x] Define a struct to hold information about each log entry in Figure 2
+
+### 3 Tips
+
++ [ ] figure8
+
+### 4 Problems and Solve
++ [ ] limit 4096*2 goroutine
+  + [ ] how can I see the dump of go process
+    + [ ] pprof
+  + [ ] i can see that in syncTicker go func1 that rpc won't quit after a long time 
+    + [ ] i choose channel + new timer to deal with it **wrong**
+    + [ ] solution: set a timeout, if not reply or timeout, don't send append to this server
+  + [ ] how to kill go routine when don't need
+    + [ ] a timer deal with timeout timer
+
+### 5 Result
+
+
+
+### 6 Cost time
+
+60-70h
+
+## improve points
+
++ Once follower is down, leader will try appendentry rpc infinitely and won't stop.

@@ -22,7 +22,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -160,7 +159,7 @@ func (rf *Raft) readPersist(data []byte) error {
 	var votedFor int
 	var log []Entry
 	var commitIndex int
-	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil|| d.Decode(&commitIndex) != nil {
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil || d.Decode(&commitIndex) != nil {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get2\n", rf.me)
 		return errors.New("nothing get")
 	} else {
@@ -365,7 +364,6 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	if len(args.Entries) > 0 {
 		removeIndex := args.PrevLogIndex + 1
 		for ; removeIndex < len(rf.log) && removeIndex < args.PrevLogIndex+len(args.Entries); removeIndex++ {
-
 			if rf.log[removeIndex].Term != args.Entries[removeIndex-args.PrevLogIndex-1].Term {
 				break
 			}
@@ -613,7 +611,15 @@ func (rf *Raft) heartbeatTicker() {
 
 // TODO sync log ticker
 func (rf *Raft) syncLogTicker() {
+
+	rf.mu.Lock()
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start sync log ticker\n", rf.me)
+	canIn := make([]bool, len(rf.peers))
+	for i, _ := range canIn {
+		canIn[i] = true
+	}
+	rf.mu.Unlock()
+
 	for {
 		rf.mu.Lock()
 		if !rf.isLeader {
@@ -623,10 +629,11 @@ func (rf *Raft) syncLogTicker() {
 		rf.mu.Unlock()
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d sync log to all\n", rf.me)
 
-		time.Sleep(time.Millisecond * 10)
+		time.Sleep(time.Millisecond * 100)
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d syncing log ticker\n", rf.me)
 		rf.mu.Lock()
 		me := rf.me
+
 		for i, peer := range rf.peers {
 			if !rf.isLeader {
 				break
@@ -650,9 +657,27 @@ func (rf *Raft) syncLogTicker() {
 				args.Term = rf.currentTerm
 				reply := AppendEntriesReply{}
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send log to %d, %v\n", rf.me, i, args.Entries)
-				rf.mu.Unlock()
-				ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
-				rf.mu.Lock()
+				done := make(chan bool, 1)
+				if canIn[i] == true {
+					canIn[i] = false
+					go func() {
+						done <- peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
+					}()
+				} else {
+					return
+				}
+
+				var ok bool
+				select {
+				case ok = <-done:
+					canIn[i] = true
+				case <-time.After(time.Duration(1000 * time.Millisecond)):
+					canIn[i] = true
+					fmt.Println("timeout!!!")
+					return
+				}
+				//ok := peer.Call("Raft.ReceiveAppendEntries", &args, &reply)
+
 				if ok {
 					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %v reply success\n", reply.Success)
 					// if there is some one reconnect with high term then exit leader state
@@ -664,7 +689,11 @@ func (rf *Raft) syncLogTicker() {
 					}
 
 					if reply.Success == false {
-						rf.nextIndex[i]--
+						if rf.nextIndex[i]-1 <= 0 {
+							rf.nextIndex[i] = 1
+						} else {
+							rf.nextIndex[i]--
+						}
 						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d\n", rf.me, i, rf.nextIndex[i])
 						return
 					}
