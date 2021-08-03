@@ -107,6 +107,9 @@ type AppendEntriesArgs struct {
 type AppendEntriesReply struct {
 	Term    int
 	Success bool
+
+	ConflictTerm  int
+	ConflictIndex int
 }
 
 // return currentTerm and whether this server
@@ -307,6 +310,8 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	defer rf.mu.Unlock()
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive ReceiveAppendEntries from %d with term %d\n", rf.me, args.LeaderId, args.Term)
 	reply.Term = rf.currentTerm
+	reply.ConflictTerm = -1
+	reply.ConflictIndex = -1
 
 	// it's heartbeat
 	// also use to reply
@@ -349,16 +354,23 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	// if log.len==1 continue
 	// implementation 2
-	if len(rf.log) > 1 {
-		if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
-			reply.Success = false
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " return false1\n")
-			return
-		} else if len(rf.log) <= args.PrevLogIndex {
-			reply.Success = false
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, prevLogIndex:%d, return false2, log:%v\n", rf.me, args.PrevLogIndex, rf.log)
-			return
+	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
+		reply.Success = false
+		for i, log := range rf.log {
+			if log.Term > args.PrevLogTerm {
+				break
+			}
+			reply.ConflictIndex = i
+			reply.ConflictTerm = log.Term
 		}
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " return false1\n")
+		return
+	} else if len(rf.log) <= args.PrevLogIndex {
+		reply.Success = false
+		reply.ConflictIndex = len(rf.log) - 1
+		reply.ConflictTerm = rf.log[reply.ConflictIndex].Term
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, prevLogIndex:%d, return false2, log:%v\n", rf.me, args.PrevLogIndex, rf.log)
+		return
 	}
 
 	if len(args.Entries) > 0 {
@@ -381,6 +393,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		} else {
 			rf.commitIndex = args.LeaderCommit
 		}
+		rf.persist()
 	}
 
 	// update lastApplied
@@ -476,7 +489,7 @@ func (rf *Raft) killed() bool {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	for rf.killed() == false {
-		time.Sleep(time.Millisecond * time.Duration(150+rand.Intn(150)))
+		time.Sleep(time.Millisecond * time.Duration(250+rand.Intn(150)))
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
@@ -666,12 +679,14 @@ func (rf *Raft) syncLogTicker() {
 				} else {
 					return
 				}
-
+				rf.mu.Unlock()
 				var ok bool
 				select {
 				case ok = <-done:
+					rf.mu.Lock()
 					canIn[i] = true
 				case <-time.After(time.Duration(1000 * time.Millisecond)):
+					rf.mu.Lock()
 					canIn[i] = true
 					fmt.Println("timeout!!!")
 					return
@@ -684,15 +699,20 @@ func (rf *Raft) syncLogTicker() {
 					if reply.Term > rf.currentTerm {
 						rf.currentTerm = reply.Term
 						rf.isLeader = false
-						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d in ???? %d fail and nextIndex-- to %d\n", rf.me, i, rf.nextIndex[i])
+						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d in ???? %d fail and term to %d\n", rf.me, i, rf.nextIndex[i])
 						return
 					}
 
 					if reply.Success == false {
-						if rf.nextIndex[i]-1 <= 0 {
-							rf.nextIndex[i] = 1
+						if reply.ConflictIndex != -1 && reply.ConflictIndex < len(rf.log) && rf.nextIndex[i] != reply.ConflictIndex {
+							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d nextIndex from %d reduce to %d\n", rf.me, rf.nextIndex[i], reply.ConflictIndex)
+							rf.nextIndex[i] = reply.ConflictIndex
 						} else {
-							rf.nextIndex[i]--
+							rf.nextIndex[i] --
+						}
+
+						if rf.nextIndex[i] <= 0 {
+							rf.nextIndex[i] = 1
 						}
 						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d\n", rf.me, i, rf.nextIndex[i])
 						return
@@ -713,6 +733,7 @@ func (rf *Raft) syncLogTicker() {
 						fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, index:%d, count:%d, matchIndex:%v\n", rf.me, j, count, rf.matchIndex)
 						if count > len(rf.peers)/2 && rf.log[j].Term == rf.currentTerm {
 							rf.commitIndex++
+							rf.persist()
 							fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commitIndex to %d\n", rf.me, rf.commitIndex)
 							// apply is end state, commit is not
 							for rf.commitIndex > rf.lastApplied {

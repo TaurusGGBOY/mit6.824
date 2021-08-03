@@ -205,6 +205,8 @@ implement persist
     + [ ] solution: set a timeout, if not reply or timeout, don't send append to this server
   + [ ] how to kill go routine when don't need
     + [ ] a timer deal with timeout timer
++ [ ] wrong in back nextindex
+  + [ ] there are some wrong in both follower and leader
 
 ### 5 Result
 
