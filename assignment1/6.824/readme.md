@@ -174,7 +174,7 @@ implement append log
 
 60-70h
 
-## improve points
+### 7improve points
 
 + Once follower is down, leader will try appendentry rpc infinitely and won't stop.
 + One time can append a piece of command
@@ -207,15 +207,33 @@ implement persist
     + [ ] a timer deal with timeout timer
 + [ ] wrong in back nextindex
   + [ ] there are some wrong in both follower and leader
++ [ ] someone become leader but not quit after receiver heartbeat
++ [ ] heartbeat and synclog may be conflict 
+    + [ ] delete heartbeat scheme
++ [ ] important: only last log.term == current term then update commitIndex
+    + [ ] it's the method to ensure all the log are most up-to-date
+    + [ ] otherwise when in selection there may be some out-date-candidate will win this selection
++ [ ] how to avoid frequently selection?
++ [ ] implement kill method can avoid too much go routine
 
 ### 5 Result
 
-
+![](https://gitee.com/agaogao/photobed/raw/master/img/20210806002358.png)
 
 ### 6 Cost time
 
-60-70h
+30-40h
 
-## improve points
+### 7improve points
 
 + Once follower is down, leader will try appendentry rpc infinitely and won't stop.
+
++ in recover phase, frequently change leader may cause slow consistence 
+
++ there is still 1/3 test will go wrong
+
+  + 2021/08/05 09:22:18 apply error: commit index=129 server=2 5918 != server=1 4089
+
+    + reorder rpc can cause commit mess
+  + config.go:552: one(9909) failed to reach agreement
+    +  lose rpc and reorder can cause slow convergence
