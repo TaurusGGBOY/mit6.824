@@ -731,7 +731,7 @@ func TestFigure82C(t *testing.T) {
 
 	nup := servers
 	for iters := 0; iters < 1000; iters++ {
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" iter:%d\n", iters)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" iter:%d\n", iters)
 		//if iters == 100 {
 		//	time.Sleep(1000 * time.Millisecond)
 		//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
@@ -841,6 +841,25 @@ func TestFigure8Unreliable2C(t *testing.T) {
 		if iters == 200 {
 			cfg.setlongreordering(true)
 		}
+		//if iters == 500 {
+		//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
+		//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file0\n")
+		//	//这里是判断是否需要记录内存的逻辑
+		//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file1\n")
+		//	memFile, err := os.Create("goroutine.prof")
+		//	if err != nil {
+		//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file2\n")
+		//		log.Println(err)
+		//	} else {
+		//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file3\n")
+		//		log.Println("end write heap profile....")
+		//		pprof.Lookup("goroutine").WriteTo(memFile,0)
+		//		//pprof.WriteHeapProfile(memFile)
+		//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " end write\n")
+		//		defer memFile.Close()
+		//	}
+		//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file5\n")
+		//}
 		leader := -1
 		for i := 0; i < servers; i++ {
 			_, _, ok := cfg.rafts[i].Start(rand.Int() % 10000)
