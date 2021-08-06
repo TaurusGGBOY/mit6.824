@@ -215,6 +215,10 @@ implement persist
     + [ ] otherwise when in selection there may be some out-date-candidate will win this selection
 + [ ] how to avoid frequently selection?
 + [ ] implement kill method can avoid too much go routine
++ [ ] receive heartbeat and vote should reset selection time
++ [ ] after 999 iter my code remind to election frequently
+    + [ ] update term once receive heartbeat or requestvote
+    + [ ] it's normal that 20 terms to elect a leader
 
 ### 5 Result
 
