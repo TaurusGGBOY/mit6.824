@@ -241,3 +241,42 @@ implement persist
     + reorder rpc can cause commit mess
   + config.go:552: one(9909) failed to reach agreement
     +  lose rpc and reorder can cause slow convergence
+
+## 2D
+
+### 1 Require
+
+implement snamshot
+
+### 2 TODO
+
++ [ ] Snapshot(index int, snapshot []byte)  communicate to Raft?
++ [ ] CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool communicate to Raft?
+  + [ ] refuse old snapshot return false to refuse snapshot
+  + [ ] check if an snapshot must be installed or not
++ [ ] InstallSnapshot RPC install snapshot
+  + [ ] don't implement figure 13 offset
++ [ ] InstallSnapshot handler -> applyCh send the snapshot by putting snapshot in ApplyMsg -> reader invokes CondInstallSnapshot -> sender ? update log 
++ [ ] no longer reference discard log
++ [ ] change the index scheme of log
++ [ ] lastIncludedTerm/lastIncludedIndex (consider whether this should be persisted).
++ [ ] SaveStateAndSnapshot() to store snapshot
++ [ ] test 2 costs 240s real timeand 90s CPU time
+
+### 3 Tips
+
++ [ ] section 7
+
+### 4 Problems and Solve
+
++ [ ] 
+
+### 5 Result
+
+
+
+### 6 Cost time
+
+
+
+### 7improve points

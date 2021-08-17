@@ -22,6 +22,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"runtime"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -75,7 +77,6 @@ type Raft struct {
 	// state a Raft server must maintain.
 
 	// Persistent all
-	// TODO need persistent
 	isLeader    bool
 	currentTerm int
 	votedFor    int
@@ -98,9 +99,17 @@ type Raft struct {
 	appendEntryCh chan bool
 	// use channel to control heartbeat
 	heartBeatCh chan bool
+	// receive snapshot rpc
+	snapshotCh chan bool
+	// apply before snapshot
+	applySnapshotCh chan bool
+
+	// 2D
+	snapshot      []byte
+	snapshotTerm  int
+	snapshotIndex int
 }
 
-//
 type AppendEntriesArgs struct {
 	Term         int
 	LeaderId     int
@@ -116,6 +125,19 @@ type AppendEntriesReply struct {
 
 	ConflictTerm  int
 	ConflictIndex int
+}
+
+type InstallSnapshotArgs struct {
+	Term             int
+	LeaderId         int
+	LastIncludeIndex int
+	LastIncludedTer  int
+	data             []byte
+	done             bool
+}
+
+type InstallSnapshotReply struct {
+	Term int
 }
 
 // return currentTerm and whether this server
@@ -147,15 +169,17 @@ func (rf *Raft) persist() {
 	e.Encode(rf.votedFor)
 	e.Encode(rf.log)
 	e.Encode(rf.commitIndex)
+	e.Encode(rf.snapshotTerm)
+	e.Encode(rf.snapshotIndex)
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d persist term:%d, voteFor:%d, commitIndex:%d\n", rf.me, rf.currentTerm, rf.votedFor, rf.commitIndex)
 	data := w.Bytes()
-	rf.persister.SaveRaftState(data)
+	rf.persister.SaveStateAndSnapshot(data, rf.snapshot)
 }
 
 //
 // restore previously persisted state.
 //
-func (rf *Raft) readPersist(data []byte) error {
+func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get1\n", rf.me)
 		return errors.New("nothing get")
@@ -168,7 +192,9 @@ func (rf *Raft) readPersist(data []byte) error {
 	var votedFor int
 	var log []Entry
 	var commitIndex int
-	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil || d.Decode(&commitIndex) != nil {
+	var snapshotTerm int
+	var snapshotIndex int
+	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil || d.Decode(&commitIndex) != nil || d.Decode(&snapshotTerm) != nil || d.Decode(&snapshotIndex) != nil {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get2\n", rf.me)
 		return errors.New("nothing get")
 	} else {
@@ -178,6 +204,9 @@ func (rf *Raft) readPersist(data []byte) error {
 		rf.commitIndex = commitIndex
 
 		rf.matchIndex[rf.me] = len(rf.log) - 1
+		rf.snapshotTerm = snapshotTerm
+		rf.snapshotIndex = snapshotIndex
+		rf.snapshot = snapshot
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist term:%d, voteFor:%d,commitIndex:%d\n", rf.me, rf.currentTerm, rf.votedFor, rf.commitIndex)
 		return nil
 	}
@@ -190,7 +219,23 @@ func (rf *Raft) readPersist(data []byte) error {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
 	// Your code here (2D).
+	select {
+	case <-rf.applySnapshotCh:
+		return false
+	default:
+	}
+	lastIndex := rf.getLastIndex()
+	if lastIncludedIndex >= lastIndex {
+		rf.log = make([]Entry, 1)
+	} else {
+		rf.log = append([]Entry{}, rf.log[rf.getIndex(rf.snapshotIndex)+1:]...)
+	}
+	rf.snapshot = snapshot
+	rf.snapshotIndex = lastIncludedIndex
+	rf.snapshotTerm = lastIncludedTerm
+	runtime.GC()
 
+	send(rf.snapshotCh)
 	return true
 }
 
@@ -200,7 +245,19 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
+	lastIndex := rf.getLastIndex()
+	if index > lastIndex {
+		return
+	}
+	rf.snapshot = snapshot
+	rf.snapshotIndex = index
+	rf.snapshotTerm = rf.log[rf.getIndex(index)].Term
+	rf.log = rf.log[rf.getIndex(rf.snapshotIndex)+1:]
 
+	runtime.GC()
+
+	// 8. Reset state machine using snapshot contents (and load snapshot’s cluster configuration)
+	send(rf.snapshotCh)
 }
 
 //
@@ -256,7 +313,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	// 5.4.2 selection restriction
 	if rf.votedFor == args.CandidateId || rf.votedFor == -1 {
-		if len(rf.log) > 1 && (args.LastLogTerm < rf.log[len(rf.log)-1].Term || (rf.log[len(rf.log)-1].Term == args.LastLogTerm && len(rf.log)-1 > args.LastLogIndex)) {
+		if rf.getLastIndex() > 0 && (args.LastLogTerm < rf.getByIndex(rf.getLastIndex()).Term || (rf.getByIndex(rf.getLastIndex()).Term == args.LastLogTerm && rf.getLastIndex() > args.LastLogIndex)) {
 			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.log[len(rf.log)-1].Term, len(rf.log)-1)
 			reply.VoteGranted = false
 			return
@@ -265,7 +322,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		send(rf.voteCh)
 		rf.votedFor = args.CandidateId
 		rf.persist()
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.log[len(rf.log)-1].Term, len(rf.log)-1)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.getByIndex(rf.getLastIndex()).Term, rf.getLastIndex())
 		return
 	}
 	reply.VoteGranted = false
@@ -311,7 +368,56 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
-// TODO
+func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply *InstallSnapshotReply) bool {
+	ok := rf.peers[server].Call("Raft.ReceiveInstallSnapshot", args, reply)
+	return ok
+}
+
+func (rf *Raft) ReceiveInstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	reply.Term = rf.currentTerm
+
+	// 1 Reply immediately if term < currentTerm
+	if args.Term < rf.currentTerm {
+		return
+	}
+
+	// if snapshot not the lasted
+	if rf.snapshotIndex >= args.LastIncludeIndex {
+		return
+	}
+
+	rf.applyCh <- ApplyMsg{
+		SnapshotValid: true,
+		Snapshot:      args.data,
+		SnapshotIndex: args.LastIncludeIndex,
+		SnapshotTerm:  args.LastIncludedTer,
+	}
+
+	// notify applyCh snapshot
+
+	send(rf.snapshotCh)
+
+	// 4. Reply and wait for more data chunks if done is false
+}
+
+func (rf *Raft) getLastIndex() int {
+	return rf.snapshotIndex + len(rf.log) - 1
+}
+
+func (rf *Raft) getIndex(index int) int {
+	return index - rf.snapshotIndex - 1
+}
+
+func (rf *Raft) getByIndex(index int) Entry {
+	if index == rf.getLastIndex() {
+		return Entry{Term: rf.snapshotTerm}
+	} else if index > rf.getLastIndex() {
+		return rf.log[index-rf.snapshotIndex-1]
+	} else {
+		panic("wrong index!")
+	}
+}
+
 func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	// heart beat and log
 	rf.mu.Lock()
@@ -360,7 +466,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	// if log.len==1 continue
 	// implementation 2
-	if len(rf.log) > args.PrevLogIndex && rf.log[args.PrevLogIndex].Term != args.PrevLogTerm {
+	if rf.getLastIndex() >= args.PrevLogIndex && rf.getByIndex(args.PrevLogIndex).Term != args.PrevLogTerm {
 		reply.Success = false
 		prevTerm := -1
 		for i, log := range rf.log {
@@ -368,7 +474,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 				break
 			}
 			if prevTerm != log.Term {
-				reply.ConflictIndex = i
+				reply.ConflictIndex = i + rf.snapshotIndex + 1
 				reply.ConflictTerm = log.Term
 				prevTerm = log.Term
 			}
@@ -378,10 +484,10 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		}
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d\n", rf.me, args.PrevLogTerm, args.PrevLogTerm, reply.ConflictIndex, reply.Term, rf.commitIndex)
 		return
-	} else if len(rf.log) <= args.PrevLogIndex {
+	} else if rf.getLastIndex() < args.PrevLogIndex {
 		reply.Success = false
-		reply.ConflictIndex = len(rf.log) - 1
-		reply.ConflictTerm = rf.log[reply.ConflictIndex].Term
+		reply.ConflictIndex = rf.getLastIndex()
+		reply.ConflictTerm = rf.getByIndex(reply.ConflictIndex).Term
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, prevLogIndex:%d, return false2, log:%v, my commitIndex:%d\n", rf.me, args.PrevLogIndex, rf.log, rf.commitIndex)
 		return
 	}
@@ -418,6 +524,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		applyMsg.CommandIndex = rf.lastApplied
 		applyMsg.Command = rf.log[applyMsg.CommandIndex].Command
 		rf.applyCh <- applyMsg
+		send(rf.applySnapshotCh)
 	}
 	if applyFlag == 1 {
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.log[rf.lastApplied], rf.log)
@@ -512,6 +619,7 @@ func (rf *Raft) ticker() {
 		select {
 		case <-rf.voteCh:
 		case <-rf.appendEntryCh:
+		case <-rf.snapshotCh:
 		case <-time.After(selectionTime):
 			{
 				rf.mu.Lock()
@@ -757,6 +865,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 					applyMsg.CommandIndex = rf.lastApplied
 					applyMsg.Command = rf.log[applyMsg.CommandIndex].Command
 					rf.applyCh <- applyMsg
+					send(rf.applySnapshotCh)
 					send(rf.heartBeatCh)
 				}
 			}
@@ -775,6 +884,13 @@ func send(ch chan bool) {
 	default:
 	}
 	ch <- true
+}
+
+func clear(ch chan bool) {
+	select {
+	case <-ch: //if already set, consume it then resent to avoid block
+	default:
+	}
 }
 
 //
@@ -802,7 +918,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.nextIndex = make([]int, len(rf.peers))
 
 	// initialize from state persisted before a crash
-	err := rf.readPersist(persister.ReadRaftState())
+	err := rf.readPersist(persister.ReadRaftState(), persister.ReadSnapshot())
 
 	// TODO if can't get from persist then give them value
 	if err != nil {
@@ -818,6 +934,14 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.voteCh = make(chan bool, 1)
 	rf.appendEntryCh = make(chan bool, 1)
 	rf.heartBeatCh = make(chan bool, 1)
+	rf.snapshotCh = make(chan bool, 1)
+	rf.applySnapshotCh = make(chan bool, 1)
+
+	// 2D
+	rf.snapshot = make([]byte, 0)
+	rf.snapshotIndex = 0
+	rf.snapshotTerm = 0
+
 	// start ticker goroutine to start elections
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
 	go rf.ticker()
