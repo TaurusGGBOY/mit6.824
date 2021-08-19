@@ -1,7 +1,7 @@
 for ((a=1;a<=100;a++))
 do
  echo ".....index =$a"
- time go test -run 2C -race> ./test/report_$a
+ time go test -run 2B -race> ./test/report_$a
  s=$(tail -n 1 ./test/report_$a)
  #echo ${s:0:2}
  #echo "ok"

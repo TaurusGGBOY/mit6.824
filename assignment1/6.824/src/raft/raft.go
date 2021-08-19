@@ -22,7 +22,9 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"runtime"
+	"log"
+	"os"
+	"runtime/pprof"
 
 	//	"bytes"
 	"sync"
@@ -219,6 +221,11 @@ func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
 	// Your code here (2D).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d\n", rf.me, lastIncludedIndex)
+
 	select {
 	case <-rf.applySnapshotCh:
 		return false
@@ -233,7 +240,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	rf.snapshot = snapshot
 	rf.snapshotIndex = lastIncludedIndex
 	rf.snapshotTerm = lastIncludedTerm
-	runtime.GC()
+	//runtime.GC()
 
 	send(rf.snapshotCh)
 	return true
@@ -245,16 +252,21 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d\n", rf.me, index)
+
 	lastIndex := rf.getLastIndex()
 	if index > lastIndex {
 		return
 	}
 	rf.snapshot = snapshot
 	rf.snapshotIndex = index
-	rf.snapshotTerm = rf.log[rf.getIndex(index)].Term
+	rf.snapshotTerm = rf.getByIndex(index).Term
 	rf.log = rf.log[rf.getIndex(rf.snapshotIndex)+1:]
 
-	runtime.GC()
+	//runtime.GC()
 
 	// 8. Reset state machine using snapshot contents (and load snapshot’s cluster configuration)
 	send(rf.snapshotCh)
@@ -374,6 +386,9 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 }
 
 func (rf *Raft) ReceiveInstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive snapshot from %d, term mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
 	reply.Term = rf.currentTerm
 
 	// 1 Reply immediately if term < currentTerm
@@ -386,32 +401,46 @@ func (rf *Raft) ReceiveInstallSnapshot(args *InstallSnapshotArgs, reply *Install
 		return
 	}
 
+	rf.mu.Unlock()
 	rf.applyCh <- ApplyMsg{
 		SnapshotValid: true,
 		Snapshot:      args.data,
 		SnapshotIndex: args.LastIncludeIndex,
 		SnapshotTerm:  args.LastIncludedTer,
 	}
+	rf.mu.Lock()
 
+	clear(rf.applySnapshotCh)
 	// notify applyCh snapshot
-
 	send(rf.snapshotCh)
 
 	// 4. Reply and wait for more data chunks if done is false
 }
 
 func (rf *Raft) getLastIndex() int {
-	return rf.snapshotIndex + len(rf.log) - 1
+	if rf.snapshotIndex == 0 {
+		return len(rf.log) - 1
+	}
+	return rf.snapshotIndex + len(rf.log)
 }
 
 func (rf *Raft) getIndex(index int) int {
+	// TODO if it is wrong...
+	// with snapshot = 0  return index-1 input 1 and get return 0 thats not right ???
+	// with snapshot = 1 return index-2 input 2 and get return 0 it's right
+	if rf.snapshotIndex == 0 {
+		return index
+	}
 	return index - rf.snapshotIndex - 1
 }
 
 func (rf *Raft) getByIndex(index int) Entry {
-	if index == rf.getLastIndex() {
-		return Entry{Term: rf.snapshotTerm}
-	} else if index > rf.getLastIndex() {
+	if rf.snapshotIndex == 0 {
+		return rf.log[index]
+	}
+	if index == rf.snapshotIndex {
+		return Entry{Term: rf.snapshotTerm, Command: nil}
+	} else if index > rf.snapshotIndex {
 		return rf.log[index-rf.snapshotIndex-1]
 	} else {
 		panic("wrong index!")
@@ -438,7 +467,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	//if rf.commitIndex > args.LeaderCommit {
-	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong leader commit from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.commitIndex, args.LeaderCommit)
+	//	fmt.Printf(time.Nowz().Format("2006-01-02 15:04:05")+" %d receive wrong leader commit from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.commitIndex, args.LeaderCommit)
 	//}
 
 	send(rf.appendEntryCh)
@@ -494,15 +523,18 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	if len(args.Entries) > 0 {
 		removeIndex := args.PrevLogIndex + 1
-		for ; removeIndex < len(rf.log) && removeIndex < args.PrevLogIndex+len(args.Entries); removeIndex++ {
-			if rf.log[removeIndex].Term != args.Entries[removeIndex-args.PrevLogIndex-1].Term {
+		for ; removeIndex <= rf.getLastIndex() && removeIndex < args.PrevLogIndex+len(args.Entries); removeIndex++ {
+			if rf.getByIndex(removeIndex).Term != args.Entries[removeIndex-args.PrevLogIndex-1].Term {
 				break
 			}
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" removeIndex:%d, args.prevLogIndex:%d, len:%d\n", removeIndex, args.PrevLogIndex, len(args.Entries))
-		rf.log = rf.log[:removeIndex]
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d, removeIndex:%d, args.prevLogIndex:%d, len:%d\n", rf.me, removeIndex, args.PrevLogIndex, len(args.Entries))
+		rf.log = rf.log[:rf.getIndex(removeIndex)]
 		rf.log = append(rf.log, args.Entries[(removeIndex-args.PrevLogIndex-1):]...)
 		rf.persist()
+		defer func() {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d reply heartbeat and apply log\n", rf.me)
+		}()
 	}
 
 	// update commitIndex
@@ -512,9 +544,9 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	}
 
 	// update lastApplied
-	// TODO before confirm apply, one should confirm if they are the same
+	// before confirm apply, one should confirm if they are the same
 	applyFlag := 0
-	for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 < len(rf.log) {
+	for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
 		applyFlag = 1
 		rf.lastApplied++
 		// what is apply log[lastApplied] to state machine
@@ -522,12 +554,14 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		applyMsg := ApplyMsg{}
 		applyMsg.CommandValid = true
 		applyMsg.CommandIndex = rf.lastApplied
-		applyMsg.Command = rf.log[applyMsg.CommandIndex].Command
+		applyMsg.Command = rf.getByIndex(applyMsg.CommandIndex).Command
+		rf.mu.Unlock()
 		rf.applyCh <- applyMsg
+		rf.mu.Lock()
 		send(rf.applySnapshotCh)
 	}
 	if applyFlag == 1 {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.log[rf.lastApplied], rf.log)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
 	}
 
 	reply.Success = true
@@ -536,7 +570,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
 			len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
-			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, len(rf.log))
+			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, rf.getLastIndex()+1)
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"ReceiveAppendEntries: log: %v\n", rf.log)
 	}
 }
@@ -577,7 +611,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.matchIndex[rf.me] = len(rf.log) - 1
 
 	// if it is
-	index = len(rf.log) - 1
+	index = rf.getLastIndex()
 	term = rf.currentTerm
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
 	return index, term, isLeader
@@ -613,7 +647,7 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start with term %d\n", rf.me, rf.currentTerm)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start\n", rf.me)
 
 		// if receive heartbeart in last sleep then no selection
 		select {
@@ -647,8 +681,8 @@ func (rf *Raft) startSelection() {
 	args := RequestVoteArgs{
 		Term:         rf.currentTerm,
 		CandidateId:  rf.me,
-		LastLogIndex: len(rf.log) - 1,
-		LastLogTerm:  rf.log[len(rf.log)-1].Term,
+		LastLogIndex: rf.getLastIndex(),
+		LastLogTerm:  rf.getByIndex(rf.getLastIndex()).Term,
 	}
 
 	// vote for self
@@ -719,14 +753,34 @@ func (rf *Raft) becomeLeader() {
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader with log:%v\n", rf.me, rf.log)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
-		rf.nextIndex[i] = len(rf.log)
+		rf.nextIndex[i] = rf.getLastIndex() + 1
 	}
 	for i := range rf.matchIndex {
 		rf.matchIndex[i] = 0
 	}
-	rf.matchIndex[rf.me] = len(rf.log) - 1
+	rf.matchIndex[rf.me] = rf.getLastIndex()
 	// periodly heartbeat
 	go rf.syncLogTicker()
+	go func() {
+		time.Sleep(3000 * time.Millisecond)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file0\n")
+		//这里是判断是否需要记录内存的逻辑
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file1\n")
+		memFile, err := os.Create("goroutine.prof")
+		if err != nil {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file2\n")
+			log.Println(err)
+		} else {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file3\n")
+			log.Println("end write heap profile....")
+			pprof.Lookup("goroutine").WriteTo(memFile, 0)
+			//pprof.WriteHeapProfile(memFile)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " end write\n")
+			defer memFile.Close()
+		}
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file5\n")
+	}()
 }
 
 func (rf *Raft) syncLogTicker() {
@@ -746,6 +800,7 @@ func (rf *Raft) syncLogTicker() {
 		case <-rf.heartBeatCh:
 		case <-time.After(heartbeatDuring):
 		}
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d finish send heartbeat and wait new\n", rf.me)
 	}
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit sync log ticker\n", rf.me)
 }
@@ -762,42 +817,84 @@ func (rf *Raft) sendAllHeartbeat() {
 		go rf.sendHeartbeatToPeer(i, peer)
 	}
 }
-
-func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
+func (rf *Raft) sendSnapshotToPeer(i int, peer *labrpc.ClientEnd) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	if !rf.isLeader {
 		return
 	}
-	lastedEntryIndex := len(rf.log) - 1
-	tempEntries := make([]Entry, len(rf.log)-rf.nextIndex[i])
-	copy(tempEntries, rf.log[rf.nextIndex[i]:])
-	args := AppendEntriesArgs{
-		Term:         rf.currentTerm,
-		Entries:      tempEntries,
-		LeaderCommit: rf.commitIndex,
-		LeaderId:     rf.me,
-		PrevLogIndex: rf.nextIndex[i] - 1,
-		PrevLogTerm:  rf.log[rf.nextIndex[i]-1].Term,
-	}
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send log to %d, start with %d, term:%d, isleader:%v, canIn:%v\n", rf.me, i, rf.nextIndex[i], rf.currentTerm, rf.isLeader, rf.canIn[i])
-	reply := AppendEntriesReply{}
 
-	r := AppendEntriesReply{}
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d send heartbeat ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send snapshot to %d with isleader:%v\n", rf.me, i, rf.isLeader)
+
+	args := InstallSnapshotArgs{
+		Term:             rf.currentTerm,
+		LeaderId:         rf.me,
+		LastIncludeIndex: rf.snapshotIndex,
+		LastIncludedTer:  rf.snapshotTerm,
+		data:             rf.snapshot,
+		done:             true,
+	}
+
+	reply := InstallSnapshotReply{
+	}
+
 	rf.mu.Unlock()
-	ok := rf.sendAppendEntries(i, &args, &r)
+	ok := rf.sendInstallSnapshot(i, &args, &reply)
 	rf.mu.Lock()
 
 	if !ok {
 		return
 	}
 
-	reply.Term = r.Term
-	reply.Success = r.Success
-	reply.ConflictIndex = r.ConflictIndex
-	reply.ConflictTerm = r.ConflictTerm
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	if args.Term != rf.currentTerm {
+		return
+	}
+
+	if reply.Term > rf.currentTerm {
+		rf.isLeader = false
+		return
+	}
+
+	// update matchIndex
+	rf.updateMatchIndex(i, args.LastIncludeIndex)
+}
+func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+	if !rf.isLeader {
+		return
+	}
+
+	if rf.nextIndex[i]-1 < rf.snapshotIndex {
+		go rf.sendSnapshotToPeer(i, peer)
+		return
+	}
+
+	lastedEntryIndex := rf.getLastIndex()
+	tempEntries := make([]Entry, rf.getLastIndex()+1-rf.nextIndex[i])
+	copy(tempEntries, rf.log[rf.getIndex(rf.nextIndex[i]):])
+	args := AppendEntriesArgs{
+		Term:         rf.currentTerm,
+		Entries:      tempEntries,
+		LeaderCommit: rf.commitIndex,
+		LeaderId:     rf.me,
+		PrevLogIndex: rf.nextIndex[i] - 1,
+		PrevLogTerm:  rf.getByIndex(rf.nextIndex[i] - 1).Term,
+	}
+
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send log to %d, start with %d, term:%d, isleader:%v, canIn:%v\n", rf.me, i, rf.nextIndex[i], rf.currentTerm, rf.isLeader, rf.canIn[i])
+	reply := AppendEntriesReply{}
+
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d send heartbeat ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	rf.mu.Unlock()
+	ok := rf.sendAppendEntries(i, &args, &reply)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	rf.mu.Lock()
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v after lock\n", i, ok, reply.Success, reply)
+
+	if !ok {
+		return
+	}
 
 	// appendix condition
 	if args.Term != rf.currentTerm {
@@ -812,7 +909,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	if reply.Success == false {
 		if reply.ConflictIndex != -1 {
 			rf.nextIndex[i] = reply.ConflictIndex
-			if rf.log[rf.nextIndex[i]].Term > reply.ConflictTerm {
+			if rf.getByIndex(rf.nextIndex[i]).Term > reply.ConflictTerm {
 				tempIndex := -1
 				prevTerm := -1
 				for j, log := range rf.log {
@@ -820,7 +917,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 						break
 					}
 					if prevTerm != log.Term {
-						tempIndex = j
+						tempIndex = j + rf.snapshotIndex + 1
 						prevTerm = log.Term
 					}
 				}
@@ -834,18 +931,23 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 		if rf.nextIndex[i] <= 0 {
 			rf.nextIndex[i] = 1
 		}
-		if len(rf.log) > 1 {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d which term %d\n", rf.me, i, rf.nextIndex[i], rf.log[rf.nextIndex[i]].Term)
+		if rf.getLastIndex() >= 1 {
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d which term %d\n", rf.me, i, rf.nextIndex[i], rf.getByIndex(rf.nextIndex[i]).Term)
 		}
 		return
 	}
 
 	// update commitIndex
-	rf.matchIndex[i] = lastedEntryIndex
+	rf.updateMatchIndex(i, lastedEntryIndex)
+}
+
+func (rf *Raft) updateMatchIndex(i int, index int) {
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex\n", rf.me)
+	rf.matchIndex[i] = index
 	rf.nextIndex[i] = rf.matchIndex[i] + 1
 	changeCommitFlag := 0
-	if rf.log[lastedEntryIndex].Term == rf.currentTerm {
-		for j := rf.commitIndex + 1; j <= lastedEntryIndex && j < len(rf.log); j++ {
+	if rf.getByIndex(index).Term == rf.currentTerm {
+		for j := rf.commitIndex + 1; j <= index && j <= rf.getLastIndex(); j++ {
 			count := 0
 			for k, _ := range rf.peers {
 				if rf.matchIndex[k] >= j {
@@ -860,27 +962,30 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 				for rf.commitIndex > rf.lastApplied {
 					changeCommitFlag = 2
 					rf.lastApplied++
-					applyMsg := ApplyMsg{}
-					applyMsg.CommandValid = true
-					applyMsg.CommandIndex = rf.lastApplied
-					applyMsg.Command = rf.log[applyMsg.CommandIndex].Command
+					applyMsg := ApplyMsg{
+						CommandValid: true,
+						CommandIndex: rf.lastApplied,
+						Command: rf.getByIndex(rf.lastApplied).Command,
+					}
+					rf.mu.Unlock()
 					rf.applyCh <- applyMsg
+					rf.mu.Lock()
 					send(rf.applySnapshotCh)
 					send(rf.heartBeatCh)
 				}
 			}
 		}
 		if changeCommitFlag == 1 {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commit to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.log[rf.lastApplied], rf.log)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commit to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
 		} else if changeCommitFlag == 2 {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.log[rf.lastApplied], rf.log)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
 		}
 	}
 }
 
 func send(ch chan bool) {
 	select {
-	case <-ch: //if already set, consume it then resent to avoid block
+	case <-ch:
 	default:
 	}
 	ch <- true
@@ -888,7 +993,7 @@ func send(ch chan bool) {
 
 func clear(ch chan bool) {
 	select {
-	case <-ch: //if already set, consume it then resent to avoid block
+	case <-ch:
 	default:
 	}
 }
@@ -905,42 +1010,42 @@ func clear(ch chan bool) {
 // for any long-running work.
 //
 func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
-	rf := &Raft{}
-	rf.peers = peers
-	rf.persister = persister
-	rf.me = me
-
 	// Your initialization code here (2A, 2B, 2C).
-	rf.isLeader = false
-	rf.commitIndex = 0
-	rf.lastApplied = 0
-	rf.matchIndex = make([]int, len(rf.peers))
-	rf.nextIndex = make([]int, len(rf.peers))
+	rf := &Raft{
+		peers:           peers,
+		persister:       persister,
+		me:              me,
+		isLeader:        false,
+		currentTerm:     0,
+		votedFor:        -1,
+		commitIndex:     0,
+		lastApplied:     0,
+		matchIndex:      make([]int, len(peers)),
+		nextIndex:       make([]int, len(peers)),
+		applyCh:         applyCh,
+		closeCh:         make(chan struct{}),
+		voteCh:          make(chan bool, 1),
+		appendEntryCh:   make(chan bool, 1),
+		heartBeatCh:     make(chan bool, 1),
+		snapshotCh:      make(chan bool, 1),
+		applySnapshotCh: make(chan bool, 1),
+		snapshot:        make([]byte, 0),
+		snapshotIndex:   0,
+		snapshotTerm:    0,
+	}
 
 	// initialize from state persisted before a crash
 	err := rf.readPersist(persister.ReadRaftState(), persister.ReadSnapshot())
 
-	// TODO if can't get from persist then give them value
+	// if can't get from persist then give them value
 	if err != nil {
-		rf.currentTerm = 0
-		rf.votedFor = -1
 		// it's leading to the index start with 1 but there are 1 more log
 		rf.log = make([]Entry, 0)
-		rf.log = append(rf.log, Entry{})
+		rf.log = append(rf.log, Entry{Term: 0, Command: nil})
 	}
 
-	rf.applyCh = applyCh
-	rf.closeCh = make(chan struct{})
-	rf.voteCh = make(chan bool, 1)
-	rf.appendEntryCh = make(chan bool, 1)
-	rf.heartBeatCh = make(chan bool, 1)
-	rf.snapshotCh = make(chan bool, 1)
-	rf.applySnapshotCh = make(chan bool, 1)
-
-	// 2D
-	rf.snapshot = make([]byte, 0)
-	rf.snapshotIndex = 0
-	rf.snapshotTerm = 0
+	// important
+	rf.lastApplied = rf.snapshotIndex
 
 	// start ticker goroutine to start elections
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
