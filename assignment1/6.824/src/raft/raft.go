@@ -220,27 +220,35 @@ func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 //
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d\n", rf.me, lastIncludedIndex)
 	// Your code here (2D).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d\n", rf.me, lastIncludedIndex)
 
 	select {
 	case <-rf.applySnapshotCh:
 		return false
 	default:
 	}
-	lastIndex := rf.getLastIndex()
-	if lastIncludedIndex >= lastIndex {
-		rf.log = make([]Entry, 1)
+
+	if lastIncludedIndex >= rf.getLastIndex() {
+		rf.log = make([]Entry, 0)
 	} else {
-		rf.log = append([]Entry{}, rf.log[rf.getIndex(rf.snapshotIndex)+1:]...)
+		rf.log = append([]Entry{}, rf.log[rf.getIndex(lastIncludedIndex)+1:]...)
 	}
 	rf.snapshot = snapshot
 	rf.snapshotIndex = lastIncludedIndex
 	rf.snapshotTerm = lastIncludedTerm
 	//runtime.GC()
+
+	// update commitindex and lastapplied
+	if rf.commitIndex < lastIncludedIndex {
+		rf.commitIndex = lastIncludedIndex
+	}
+
+	if rf.lastApplied < lastIncludedIndex {
+		rf.lastApplied = lastIncludedIndex
+	}
 
 	send(rf.snapshotCh)
 	return true
@@ -252,21 +260,27 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d\n", rf.me, index)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d\n", rf.me, index)
-
+	// important: the order of these cmd
 	lastIndex := rf.getLastIndex()
 	if index > lastIndex {
 		return
 	}
 	rf.snapshot = snapshot
-	rf.snapshotIndex = index
 	rf.snapshotTerm = rf.getByIndex(index).Term
-	rf.log = rf.log[rf.getIndex(rf.snapshotIndex)+1:]
+	rf.log = rf.log[rf.getIndex(index)+1:]
+	rf.snapshotIndex = index
 
-	//runtime.GC()
+	if rf.commitIndex < index {
+		rf.commitIndex = index
+	}
+
+	if rf.lastApplied < index {
+		rf.lastApplied = index
+	}
 
 	// 8. Reset state machine using snapshot contents (and load snapshot’s cluster configuration)
 	send(rf.snapshotCh)
@@ -942,10 +956,9 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 }
 
 func (rf *Raft) updateMatchIndex(i int, index int) {
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex\n", rf.me)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex to %d, lastlogindex %d, log %v\n", rf.me, index, rf.getLastIndex(), rf.log)
 	rf.matchIndex[i] = index
 	rf.nextIndex[i] = rf.matchIndex[i] + 1
-	changeCommitFlag := 0
 	if rf.getByIndex(index).Term == rf.currentTerm {
 		for j := rf.commitIndex + 1; j <= index && j <= rf.getLastIndex(); j++ {
 			count := 0
@@ -955,30 +968,24 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 				}
 			}
 			if count > len(rf.peers)/2 {
-				changeCommitFlag = 1
 				rf.commitIndex++
 				rf.persist()
 				// apply is end state, commit is not
-				for rf.commitIndex > rf.lastApplied {
-					changeCommitFlag = 2
+				for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
 					rf.lastApplied++
 					applyMsg := ApplyMsg{
 						CommandValid: true,
 						CommandIndex: rf.lastApplied,
-						Command: rf.getByIndex(rf.lastApplied).Command,
+						Command:      rf.getByIndex(rf.lastApplied).Command,
 					}
 					rf.mu.Unlock()
 					rf.applyCh <- applyMsg
 					rf.mu.Lock()
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
 					send(rf.applySnapshotCh)
 					send(rf.heartBeatCh)
 				}
 			}
-		}
-		if changeCommitFlag == 1 {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commit to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
-		} else if changeCommitFlag == 2 {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
 		}
 	}
 }
