@@ -562,20 +562,21 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	applyFlag := 0
 	for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
 		applyFlag = 1
-		rf.lastApplied++
 		// what is apply log[lastApplied] to state machine
 		// it is apply
 		applyMsg := ApplyMsg{}
 		applyMsg.CommandValid = true
-		applyMsg.CommandIndex = rf.lastApplied
+		applyMsg.CommandIndex = rf.lastApplied + 1
 		applyMsg.Command = rf.getByIndex(applyMsg.CommandIndex).Command
 		rf.mu.Unlock()
 		rf.applyCh <- applyMsg
 		rf.mu.Lock()
+		rf.lastApplied++
 		send(rf.applySnapshotCh)
 	}
 	if applyFlag == 1 {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, last apply:%d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, commitIndex:%d, last apply to:%d, log:%v\n", rf.me, rf.commitIndex, rf.lastApplied, rf.log)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" log[i]:%v\n", rf.getByIndex(rf.lastApplied))
 	}
 
 	reply.Success = true
@@ -972,16 +973,18 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 				rf.persist()
 				// apply is end state, commit is not
 				for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
-					rf.lastApplied++
+
 					applyMsg := ApplyMsg{
 						CommandValid: true,
-						CommandIndex: rf.lastApplied,
-						Command:      rf.getByIndex(rf.lastApplied).Command,
+						CommandIndex: rf.lastApplied + 1,
+						Command:      rf.getByIndex(rf.lastApplied + 1).Command,
 					}
 					rf.mu.Unlock()
 					rf.applyCh <- applyMsg
 					rf.mu.Lock()
-					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, apply to %d, log[i]:%v, log:%v\n", rf.me, rf.lastApplied, rf.getByIndex(rf.lastApplied), rf.log)
+					rf.lastApplied++
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commitIndex:%d, apply to %d, log:%v\n", rf.me, rf.commitIndex, rf.lastApplied, rf.log)
+					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" log[i]:%v\n", rf.getByIndex(rf.lastApplied))
 					send(rf.applySnapshotCh)
 					send(rf.heartBeatCh)
 				}
