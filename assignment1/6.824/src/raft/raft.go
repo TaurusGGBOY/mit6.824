@@ -105,6 +105,8 @@ type Raft struct {
 	snapshotCh chan bool
 	// apply before snapshot
 	applySnapshotCh chan bool
+	// channel to inform main routine update commitIndex
+	applyRoutineCh chan bool
 
 	// 2D
 	snapshot      []byte
@@ -457,6 +459,7 @@ func (rf *Raft) getByIndex(index int) Entry {
 	} else if index > rf.snapshotIndex {
 		return rf.log[index-rf.snapshotIndex-1]
 	} else {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, lastIndex:%d, getIndex:%d\n", rf.me, rf.getLastIndex(), index)
 		panic("wrong index!")
 	}
 }
@@ -559,25 +562,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	// update lastApplied
 	// before confirm apply, one should confirm if they are the same
-	applyFlag := 0
-	for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
-		applyFlag = 1
-		// what is apply log[lastApplied] to state machine
-		// it is apply
-		applyMsg := ApplyMsg{}
-		applyMsg.CommandValid = true
-		applyMsg.CommandIndex = rf.lastApplied + 1
-		applyMsg.Command = rf.getByIndex(applyMsg.CommandIndex).Command
-		rf.mu.Unlock()
-		rf.applyCh <- applyMsg
-		rf.mu.Lock()
-		rf.lastApplied++
-		send(rf.applySnapshotCh)
-	}
-	if applyFlag == 1 {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" follower:%d, commitIndex:%d, last apply to:%d, log:%v\n", rf.me, rf.commitIndex, rf.lastApplied, rf.log)
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" log[i]:%v\n", rf.getByIndex(rf.lastApplied))
-	}
+	send(rf.applyRoutineCh)
 
 	reply.Success = true
 	if len(args.Entries) > 0 {
@@ -815,7 +800,7 @@ func (rf *Raft) syncLogTicker() {
 		case <-rf.heartBeatCh:
 		case <-time.After(heartbeatDuring):
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d finish send heartbeat and wait new\n", rf.me)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d finish send heartbeat and wait new\n", rf.me)
 	}
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit sync log ticker\n", rf.me)
 }
@@ -903,9 +888,9 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d send heartbeat ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Unlock()
 	ok := rf.sendAppendEntries(i, &args, &reply)
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Lock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v after lock\n", i, ok, reply.Success, reply)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v after lock\n", i, ok, reply.Success, reply)
 
 	if !ok {
 		return
@@ -921,6 +906,12 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 		return
 	}
 
+	rf.handleAppendEntriesReply(i, &reply)
+	// update commitIndex
+	rf.updateMatchIndex(i, lastedEntryIndex)
+}
+
+func (rf *Raft) handleAppendEntriesReply(i int, reply *AppendEntriesReply) {
 	if reply.Success == false {
 		if reply.ConflictIndex != -1 {
 			rf.nextIndex[i] = reply.ConflictIndex
@@ -949,11 +940,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 		if rf.getLastIndex() >= 1 {
 			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d which term %d\n", rf.me, i, rf.nextIndex[i], rf.getByIndex(rf.nextIndex[i]).Term)
 		}
-		return
 	}
-
-	// update commitIndex
-	rf.updateMatchIndex(i, lastedEntryIndex)
 }
 
 func (rf *Raft) updateMatchIndex(i int, index int) {
@@ -972,22 +959,7 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 				rf.commitIndex++
 				rf.persist()
 				// apply is end state, commit is not
-				for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
-
-					applyMsg := ApplyMsg{
-						CommandValid: true,
-						CommandIndex: rf.lastApplied + 1,
-						Command:      rf.getByIndex(rf.lastApplied + 1).Command,
-					}
-					rf.mu.Unlock()
-					rf.applyCh <- applyMsg
-					rf.mu.Lock()
-					rf.lastApplied++
-					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commitIndex:%d, apply to %d, log:%v\n", rf.me, rf.commitIndex, rf.lastApplied, rf.log)
-					fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" log[i]:%v\n", rf.getByIndex(rf.lastApplied))
-					send(rf.applySnapshotCh)
-					send(rf.heartBeatCh)
-				}
+				send(rf.applyRoutineCh)
 			}
 		}
 	}
@@ -1005,6 +977,36 @@ func clear(ch chan bool) {
 	select {
 	case <-ch:
 	default:
+	}
+}
+
+func (rf *Raft) applyRoutine() {
+	for !rf.killed() {
+		select {
+		case <-rf.applyRoutineCh:
+		default:
+		}
+		rf.mu.Lock()
+		for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
+
+			applyMsg := ApplyMsg{
+				CommandValid: true,
+				CommandIndex: rf.lastApplied + 1,
+				Command:      rf.getByIndex(rf.lastApplied + 1).Command,
+			}
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, rf.lastApplied:%d, apply msg:%v\n", rf.isLeader, rf.me, rf.lastApplied+1, applyMsg)
+			rf.mu.Unlock()
+			rf.applyCh <- applyMsg
+			rf.mu.Lock()
+			if rf.lastApplied+1 == applyMsg.CommandIndex {
+				rf.lastApplied++
+			}
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, commitIndex:%d, apply to %d, log:%v\n", rf.isLeader, rf.me, rf.commitIndex, rf.lastApplied, rf.log)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" log[i]:%v\n", rf.getByIndex(rf.lastApplied))
+			send(rf.applySnapshotCh)
+			send(rf.heartBeatCh)
+		}
+		rf.mu.Unlock()
 	}
 }
 
@@ -1039,6 +1041,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		heartBeatCh:     make(chan bool, 1),
 		snapshotCh:      make(chan bool, 1),
 		applySnapshotCh: make(chan bool, 1),
+		applyRoutineCh:  make(chan bool, 1),
 		snapshot:        make([]byte, 0),
 		snapshotIndex:   0,
 		snapshotTerm:    0,
@@ -1060,5 +1063,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// start ticker goroutine to start elections
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
 	go rf.ticker()
+	// start apply routine watch commitIndex
+	go rf.applyRoutine()
 	return rf
 }
