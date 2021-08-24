@@ -1,7 +1,7 @@
 for ((a=1;a<=100;a++))
 do
  echo ".....index =$a"
- time go test -run TestSnapshotBasic2D -race> ./test/report_$a
+ time go test -run TestSnapshotInstall2D -race> ./test/report_$a
  s=$(tail -n 1 ./test/report_$a)
  #echo ${s:0:2}
  #echo "ok"

@@ -193,7 +193,7 @@ func (cfg *config) applierSnap(i int, applyCh chan ApplyMsg) {
 				d := labgob.NewDecoder(r)
 				var v int
 				if d.Decode(&v) != nil {
-					log.Fatalf("decode error\n")
+					log.Fatalf("test decode error %v len:%d\n",v, len(m.Snapshot))
 				}
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+"applyCh has message:%d, %d\n", i, m.SnapshotIndex)
 				cfg.logs[i][m.SnapshotIndex] = v
