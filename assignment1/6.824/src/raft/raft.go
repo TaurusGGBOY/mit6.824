@@ -469,9 +469,10 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d in term %d receive ReceiveAppendEntries from %d with term %d, isleader:%v\n", rf.me, rf.currentTerm, args.LeaderId, args.Term, rf.isLeader)
+	// init reply
 	reply.Term = rf.currentTerm
-	reply.ConflictTerm = -1
-	reply.ConflictIndex = -1
+	reply.ConflictTerm = rf.snapshotIndex
+	reply.ConflictIndex = rf.snapshotTerm
 
 	// it's heartbeat
 	// also use to reply
@@ -513,19 +514,14 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// TODO why this can be wrong sometimes
 	if rf.getLastIndex() >= args.PrevLogIndex && rf.getByIndex(args.PrevLogIndex).Term != args.PrevLogTerm {
 		reply.Success = false
-		prevTerm := -1
+		reply.ConflictTerm = rf.getByIndex(args.PrevLogIndex).Term
+		reply.ConflictIndex = rf.getLastIndex()
+
 		for i, log := range rf.log {
-			if log.Term > args.PrevLogTerm {
+			if log.Term == args.PrevLogTerm {
+				reply.ConflictIndex = rf.getIndex(i)
 				break
 			}
-			if prevTerm != log.Term {
-				reply.ConflictIndex = i + rf.snapshotIndex + 1
-				reply.ConflictTerm = log.Term
-				prevTerm = log.Term
-			}
-		}
-		if reply.ConflictIndex > args.PrevLogIndex-1 {
-			reply.ConflictIndex = args.PrevLogIndex - 1
 		}
 		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d\n", rf.me, args.PrevLogTerm, args.PrevLogTerm, reply.ConflictIndex, reply.Term, rf.commitIndex)
 		return
@@ -557,12 +553,14 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = args.LeaderCommit
 		rf.persist()
+		send(rf.applyRoutineCh)
 	}
 
 	// update lastApplied
 	// before confirm apply, one should confirm if they are the same
-	send(rf.applyRoutineCh)
 
+	reply.ConflictIndex = rf.getLastIndex()
+	reply.ConflictTerm = rf.getByIndex(reply.ConflictIndex).Term
 	reply.Success = true
 	if len(args.Entries) > 0 {
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + "ReceiveAppendEntries: end\n")
@@ -606,7 +604,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	//	rf.log[len(rf.log)-1].Term = rf.currentTerm
 	//}
 
-	rf.matchIndex[rf.me] = len(rf.log) - 1
+	rf.matchIndex[rf.me] = rf.getLastIndex()
 
 	// if it is
 	index = rf.getLastIndex()
@@ -693,10 +691,10 @@ func (rf *Raft) startSelection() {
 			reply := RequestVoteReply{}
 			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d for term %d,args:%v\n", rf.me, i, args.Term, args)
 			rf.sendRequestVoteToPeer(i, &args, &reply)
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get reply waiting for lock args:%v, reply:%v\n", rf.me, args, reply)
+			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get reply waiting for lock args:%v, reply:%v\n", rf.me, args, reply)
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get lock args:%v, reply:%v\n", rf.me, args, reply)
+			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get lock args:%v, reply:%v\n", rf.me, args, reply)
 			if args.Term == rf.currentTerm {
 				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d recieve vote reply to %d for term %d,args:%v,reply:%v\n", rf.me, i, args.Term, args, reply)
 			}
@@ -857,12 +855,13 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 		return
 	}
 
-	if rf.nextIndex[i]-1 < rf.snapshotIndex {
+	if rf.nextIndex[i] <= rf.snapshotIndex {
 		rf.sendSnapshotToPeer(i, peer)
 		return
 	}
 
 	lastedEntryIndex := rf.getLastIndex()
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, i:%d, rf.getlastIndex:%d, rf.nextIndex:%d\n", rf.me, i, rf.getLastIndex(), rf.nextIndex[i])
 	tempEntries := make([]Entry, rf.getLastIndex()+1-rf.nextIndex[i])
 	copy(tempEntries, rf.log[rf.getIndex(rf.nextIndex[i]):])
 	args := AppendEntriesArgs{
@@ -894,54 +893,13 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 		return
 	}
 
-	if reply.Success == false {
-		rf.nextIndex[i]--
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d i:%d rf.nextIndex-- to:%d, reply:%v, ok:%v\n", rf.me, i, rf.nextIndex[i], reply, ok)
-		return
-	}
-	// TODO what if rf.nextIndex[i] < rf.snapshotIndex ?
-	rf.handleAppendEntriesReply(i, &reply)
 	// update commitIndex
-	if reply.Success{
+	if reply.Success {
 		rf.updateMatchIndex(i, lastedEntryIndex)
-	}
-}
-
-func (rf *Raft) handleAppendEntriesReply(i int, reply *AppendEntriesReply) {
-	if rf.nextIndex[i] <= 0 {
-		rf.nextIndex[i] = 1
-		return
-	}
-
-	if reply.ConflictIndex == -1 {
-		return
-	}
-
-	rf.nextIndex[i] = reply.ConflictIndex
-
-	if rf.nextIndex[i] -1 < rf.snapshotIndex {
-		return
-	}
-
-	if rf.getByIndex(rf.nextIndex[i]).Term > reply.ConflictTerm {
-		tempIndex := -1
-		prevTerm := -1
-		for j, log := range rf.log {
-			if log.Term > reply.ConflictTerm {
-				break
-			}
-			if prevTerm != log.Term {
-				tempIndex = j + rf.snapshotIndex + 1
-				prevTerm = log.Term
-			}
+	} else {
+		if reply.ConflictIndex != 0 {
+			rf.nextIndex[i] = reply.ConflictIndex
 		}
-		if tempIndex < rf.nextIndex[i] {
-			rf.nextIndex[i] = tempIndex
-		}
-	}
-
-	if rf.getLastIndex() >= 1 {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d follower:%d fail and nextIndex-- to %d which term %d\n", rf.me, i, rf.nextIndex[i], rf.getByIndex(rf.nextIndex[i]).Term)
 	}
 }
 
@@ -949,7 +907,11 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 	if rf.matchIndex[i] >= index {
 		return
 	}
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex to %d, lastlogindex %d, log %v\n", rf.me, index, rf.getLastIndex(), rf.log)
+
+	if index < rf.snapshotIndex {
+		return
+	}
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, commitIndex:%d, update commitIndex to %d, lastlogindex %d, log %v\n", rf.me, rf.commitIndex, index, rf.getLastIndex(), rf.log)
 	rf.matchIndex[i] = index
 	rf.nextIndex[i] = rf.matchIndex[i] + 1
 	if rf.getByIndex(index).Term == rf.currentTerm {
@@ -962,6 +924,7 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 			}
 			if count > len(rf.peers)/2 {
 				rf.commitIndex++
+				//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex to %d and want to apply\n", rf.me, rf.commitIndex)
 				rf.persist()
 				// apply is end state, commit is not
 				send(rf.applyRoutineCh)
@@ -985,12 +948,30 @@ func clear(ch chan bool) {
 	}
 }
 
+
+func min(i int, j int) int {
+	if i > j {
+		return j
+	} else {
+		return i
+	}
+}
+
+func max(i int, j int) int {
+	if i > j {
+		return i
+	} else {
+		return j
+	}
+}
+
 func (rf *Raft) applyRoutine() {
 	for !rf.killed() {
 		select {
 		case <-rf.applyRoutineCh:
 		}
 		rf.mu.Lock()
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, start to apply, rf.lastApplied:%d, rf.commitIndex:%d\n", rf.isLeader, rf.me, rf.lastApplied, rf.commitIndex)
 		for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
 
 			applyMsg := ApplyMsg{
@@ -998,14 +979,12 @@ func (rf *Raft) applyRoutine() {
 				CommandIndex: rf.lastApplied + 1,
 				Command:      rf.getByIndex(rf.lastApplied + 1).Command,
 			}
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, rf.lastApplied:%d, apply msg:%v\n", rf.isLeader, rf.me, rf.lastApplied+1, applyMsg)
 			rf.mu.Unlock()
 			rf.applyCh <- applyMsg
 			rf.mu.Lock()
 			if rf.lastApplied+1 == applyMsg.CommandIndex {
 				rf.lastApplied++
 			}
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, commitIndex:%d, apply to %d, log:%v\n", rf.isLeader, rf.me, rf.commitIndex, rf.lastApplied, rf.log)
 			send(rf.applySnapshotCh)
 			send(rf.heartBeatCh)
 		}
