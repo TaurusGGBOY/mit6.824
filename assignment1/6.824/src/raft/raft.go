@@ -512,24 +512,25 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	// implementation 2
 	// TODO why this can be wrong sometimes
-	if rf.getLastIndex() >= args.PrevLogIndex && rf.getByIndex(args.PrevLogIndex).Term != args.PrevLogTerm {
+	if rf.getLastIndex() < args.PrevLogIndex {
+		reply.Success = false
+		reply.ConflictIndex = rf.getLastIndex() + 1
+		// it is convenient for leader to direct send
+		reply.ConflictTerm = -1
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, prevLogIndex:%d, return false2, log:%v, my commitIndex:%d\n", rf.me, args.PrevLogIndex, rf.log, rf.commitIndex)
+		return
+	} else if rf.getLastIndex() >= args.PrevLogIndex && rf.getByIndex(args.PrevLogIndex).Term != args.PrevLogTerm {
 		reply.Success = false
 		reply.ConflictTerm = rf.getByIndex(args.PrevLogIndex).Term
 		reply.ConflictIndex = rf.getLastIndex()
 
 		for i, log := range rf.log {
-			if log.Term == args.PrevLogTerm {
+			if log.Term == reply.ConflictTerm {
 				reply.ConflictIndex = rf.getIndex(i)
 				break
 			}
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d\n", rf.me, args.PrevLogTerm, args.PrevLogTerm, reply.ConflictIndex, reply.Term, rf.commitIndex)
-		return
-	} else if rf.getLastIndex() < args.PrevLogIndex {
-		reply.Success = false
-		reply.ConflictIndex = rf.getLastIndex()
-		reply.ConflictTerm = rf.getByIndex(reply.ConflictIndex).Term
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, prevLogIndex:%d, return false2, log:%v, my commitIndex:%d\n", rf.me, args.PrevLogIndex, rf.log, rf.commitIndex)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d, log:%v\n", rf.me, args.PrevLogIndex, args.PrevLogTerm, reply.ConflictIndex, reply.ConflictTerm, rf.commitIndex, rf.log)
 		return
 	}
 
@@ -558,9 +559,6 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	// update lastApplied
 	// before confirm apply, one should confirm if they are the same
-
-	reply.ConflictIndex = rf.getLastIndex()
-	reply.ConflictTerm = rf.getByIndex(reply.ConflictIndex).Term
 	reply.Success = true
 	if len(args.Entries) > 0 {
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + "ReceiveAppendEntries: end\n")
@@ -803,7 +801,7 @@ func (rf *Raft) syncLogTicker() {
 
 func (rf *Raft) sendAllHeartbeat() {
 	rf.mu.Lock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v\n", rf.me, rf.isLeader)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log:%v\n", rf.me, rf.isLeader, rf.log)
 	rf.mu.Unlock()
 
 	for i, peer := range rf.peers {
@@ -879,7 +877,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d send heartbeat ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Unlock()
 	ok := rf.sendAppendEntries(i, &args, &reply)
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Lock()
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v after lock\n", i, ok, reply.Success, reply)
 
@@ -897,8 +895,19 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	if reply.Success {
 		rf.updateMatchIndex(i, lastedEntryIndex)
 	} else {
-		if reply.ConflictIndex != 0 {
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v rf.nextIndex:%d\n", i, ok, reply.Success, reply, rf.nextIndex[i])
+		if reply.ConflictTerm == -1 {
 			rf.nextIndex[i] = reply.ConflictIndex
+		} else {
+			// if no conflict term element then
+			// if exist conflict term then start with last log
+			conflictIndex := reply.ConflictIndex
+			for i, log := range rf.log {
+				if log.Term == reply.ConflictTerm {
+					conflictIndex = rf.getIndex(i)
+				}
+			}
+			rf.nextIndex[i] = conflictIndex
 		}
 	}
 }
@@ -947,7 +956,6 @@ func clear(ch chan bool) {
 	default:
 	}
 }
-
 
 func min(i int, j int) int {
 	if i > j {
