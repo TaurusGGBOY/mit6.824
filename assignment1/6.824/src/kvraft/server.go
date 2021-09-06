@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 )
 
-const Debug = false
+const Debug = true
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -20,7 +20,7 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 
 
 type Op struct {
-	// Your definitions here.
+	// TODO Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
 }
@@ -34,16 +34,27 @@ type KVServer struct {
 
 	maxraftstate int // snapshot if log grows this big
 
-	// Your definitions here.
+	// TODO Your definitions here.
+	kvMap map[string]string
 }
 
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// Your code here.
+	// TODO Your code here.
+	_, isleader := kv.rf.GetState()
+	if !isleader{
+		reply.Err = ErrWrongLeader
+		return
+	}
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// Your code here.
+	// TODO Your code here.
+	_, isleader := kv.rf.GetState()
+	if !isleader{
+		reply.Err = ErrWrongLeader
+		return
+	}
 }
 
 //
@@ -60,6 +71,7 @@ func (kv *KVServer) Kill() {
 	atomic.StoreInt32(&kv.dead, 1)
 	kv.rf.Kill()
 	// Your code here, if desired.
+	DPrintf("kill rf.me: %d\n", kv.me)
 }
 
 func (kv *KVServer) killed() bool {
@@ -90,12 +102,13 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 
-	// You may need initialization code here.
+	// TODO You may need initialization code here.
+	kv.kvMap = map[string]string{}
 
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 
-	// You may need initialization code here.
+	// TODO You may need initialization code here.
 
 	return kv
 }
