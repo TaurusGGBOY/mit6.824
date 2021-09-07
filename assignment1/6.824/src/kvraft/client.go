@@ -8,8 +8,10 @@ import "math/big"
 
 type Clerk struct {
 	servers []*labrpc.ClientEnd
-	// TODO You will have to modify this struct.
-	prevLeaderId int
+	// You will have to modify this struct.
+	clerkId int64
+	prevLeaderId  int
+	transactionId int
 }
 
 func nrand() int64 {
@@ -22,8 +24,10 @@ func nrand() int64 {
 func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 	ck := new(Clerk)
 	ck.servers = servers
-	// TODO You'll have to add code here.
-	ck.prevLeaderId = -1
+	// You'll have to add code here.
+	ck.clerkId = nrand()
+	ck.prevLeaderId = 0
+	ck.transactionId = 0
 	return ck
 }
 
@@ -40,34 +44,33 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
-	if ck.prevLeaderId == -1 {
-		ck.prevLeaderId = int(nrand()) % len(ck.servers)
-	}
 	args := GetArgs{
-		Key: key,
+		Key:           key,
+		ClerkId:  ck.clerkId,
+		TransactionId: ck.transactionId,
 	}
 	reply := GetReply{}
 
-	ok := ck.servers[ck.prevLeaderId].Call("KVServer.Get", &args, &reply)
-	// TODO You will have to modify this function.
-	// TODO no consider idempotency
-	if reply.Err == "" {
-		ck.prevLeaderId = -1
-		return ""
+	for {
+		ok := ck.servers[ck.prevLeaderId].Call("KVServer.Get", &args, &reply)
+		// ou will have to modify this function.
+		if !ok || reply.Err == "" {
+			continue
+		}
+		if reply.Err == OK {
+			ck.transactionId++
+			return reply.Value
+		}
+		if reply.Err == ErrNoKey {
+			ck.transactionId++
+			return ""
+		}
+		if reply.Err == ErrWrongLeader {
+			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
+			continue
+		}
 	}
-	if !ok {
-		return ""
-	}
-	if reply.Err == OK{
-
-	}
-	if reply.Err == ErrNoKey{
-
-	}
-	if reply.Err == ErrWrongLeader{
-
-	}
-	return reply.Value
+	return ""
 }
 
 //
@@ -81,22 +84,34 @@ func (ck *Clerk) Get(key string) string {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
-	// TODO You will have to modify this function.
-	if ck.prevLeaderId == -1 {
-		ck.prevLeaderId = int(nrand()) % len(ck.servers)
-	}
+	// You will have to modify this function.
 	args := PutAppendArgs{
-		Key: key,
-		Value: value,
-		Op: op,
+		Key:           key,
+		Value:         value,
+		Op:            op,
+		TransactionId: ck.transactionId,
+		ClerkId: ck.clerkId,
 	}
 	reply := PutAppendReply{}
 
-	ok := ck.servers[ck.prevLeaderId].Call("KVServer.PutAppend", &args, &reply)
-
-	// TODO no consider idempotency
-	if !ok || reply.Err == "" {
-		ck.prevLeaderId = -1
+	for {
+		ok := ck.servers[ck.prevLeaderId].Call("KVServer.PutAppend", &args, &reply)
+		// You will have to modify this function.
+		if !ok || reply.Err == "" {
+			continue
+		}
+		if reply.Err == OK {
+			ck.transactionId++
+			return
+		}
+		if reply.Err == ErrNoKey {
+			ck.transactionId++
+			return
+		}
+		if reply.Err == ErrWrongLeader {
+			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
+			continue
+		}
 	}
 }
 

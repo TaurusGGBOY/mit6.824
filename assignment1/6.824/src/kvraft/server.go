@@ -7,9 +7,11 @@ import (
 	"log"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 const Debug = true
+const ApplyTimeout = 800 * time.Millisecond
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
 	if Debug {
@@ -18,11 +20,15 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 	return
 }
 
-
 type Op struct {
 	// TODO Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
+	Key     string
+	Value   string
+	Type    string
+	ClerkId int64
+	TransId int
 }
 
 type KVServer struct {
@@ -35,25 +41,73 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// TODO Your definitions here.
-	kvMap map[string]string
+	db       map[string]string
+	transIds map[int64]int
+	notifyCh map[int]chan bool
 }
 
-
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// TODO Your code here.
-	_, isleader := kv.rf.GetState()
-	if !isleader{
-		reply.Err = ErrWrongLeader
-		return
+	// TODO first no idempotence
+	cmd := Op{
+		Key:     args.Key,
+		Value:   "",
+		Type:    "Get",
+		ClerkId: args.ClerkId,
+		TransId: args.TransactionId,
+	}
+	reply.Value = ""
+	for {
+		index, _, isleader := kv.rf.Start(cmd)
+		if !isleader {
+			reply.Err = ErrWrongLeader
+			return
+		}
+
+		kv.notifyCh[index] = make(chan bool)
+		select {
+		case <-kv.notifyCh[index]:
+			value, ok := kv.db[args.Key]
+			if !ok {
+				reply.Err = ErrNoKey
+				return
+			}
+			reply.Err = OK
+			reply.Value = value
+			return
+		case <-time.After(ApplyTimeout):
+		}
 	}
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// TODO Your code here.
-	_, isleader := kv.rf.GetState()
-	if !isleader{
-		reply.Err = ErrWrongLeader
-		return
+	// TODO first no idempotence.
+	cmd := Op{
+		Key:     args.Key,
+		Value:   args.Value,
+		Type:    args.Op,
+		ClerkId: args.ClerkId,
+		TransId: args.TransactionId,
+	}
+	for {
+		index, _, isleader := kv.rf.Start(cmd)
+		if !isleader {
+			reply.Err = ErrWrongLeader
+			return
+		}
+
+		kv.notifyCh[index] = make(chan bool)
+		select {
+		case <-kv.notifyCh[index]:
+			value, ok := kv.db[args.Key]
+			reply.Err = OK
+			if !ok || args.Op == "Put" {
+				kv.db[args.Key] = args.Value
+			} else if args.Op == "Append" {
+				kv.db[args.Key] = value + args.Value
+			}
+			return
+		case <-time.After(ApplyTimeout):
+		}
 	}
 }
 
@@ -79,6 +133,13 @@ func (kv *KVServer) killed() bool {
 	return z == 1
 }
 
+// TODO listen applyCh
+func (kv *KVServer) listen() {
+	for {
+
+	}
+}
+
 //
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
@@ -101,14 +162,10 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv := new(KVServer)
 	kv.me = me
 	kv.maxraftstate = maxraftstate
-
-	// TODO You may need initialization code here.
-	kv.kvMap = map[string]string{}
-
+	kv.db = map[string]string{}
+	kv.transIds = map[int64]int{}
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-
-	// TODO You may need initialization code here.
-
+	go kv.listen()
 	return kv
 }
