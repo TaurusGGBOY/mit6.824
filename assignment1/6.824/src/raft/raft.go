@@ -22,10 +22,6 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"log"
-	"os"
-	"runtime/pprof"
-
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -327,7 +323,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d out of date vote from %d at term %d\n", rf.me, args.CandidateId, rf.currentTerm)
 		return
 	} else if args.Term > rf.currentTerm {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d update requestvote in term %d from %d for term %d\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d update requestvote in term %d from %d for term %d\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 		rf.currentTerm = args.Term
 		rf.votedFor = -1
 		rf.isLeader = false
@@ -336,7 +332,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	if args.Term == rf.currentTerm {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive requestvote in term %d from %d for term %d\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive requestvote in term %d from %d for term %d\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
 	}
 
 	// 5.4.2 selection restriction
@@ -350,11 +346,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		send(rf.voteCh)
 		rf.votedFor = args.CandidateId
 		rf.persist()
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.getByIndex(rf.getLastIndex()).Term, rf.getLastIndex())
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.getByIndex(rf.getLastIndex()).Term, rf.getLastIndex())
 		return
 	}
 	reply.VoteGranted = false
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d not vote for you but vote for %d\n", rf.me, rf.votedFor)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d not vote for you but vote for %d\n", rf.me, rf.votedFor)
 }
 
 //
@@ -541,12 +537,12 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 				break
 			}
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d, removeIndex:%d, args.prevLogIndex:%d, len:%d\n", rf.me, removeIndex, args.PrevLogIndex, len(args.Entries))
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d, removeIndex:%d, args.prevLogIndex:%d, len:%d\n", rf.me, removeIndex, args.PrevLogIndex, len(args.Entries))
 		rf.log = rf.log[:rf.getIndex(removeIndex)]
 		rf.log = append(rf.log, args.Entries[(removeIndex-args.PrevLogIndex-1):]...)
 		rf.persist()
 		defer func() {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d reply heartbeat and apply log\n", rf.me)
+			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d reply heartbeat and apply log\n", rf.me)
 		}()
 	}
 
@@ -562,10 +558,10 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	reply.Success = true
 	if len(args.Entries) > 0 {
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + "ReceiveAppendEntries: end\n")
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
-			len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
-			rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, rf.getLastIndex()+1)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
+		//	len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
+		//	rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, rf.getLastIndex()+1)
 	}
 }
 
@@ -641,7 +637,7 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start\n", rf.me)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d ticker start\n", rf.me)
 
 		// if receive heartbeart in last sleep then no selection
 		select {
@@ -659,7 +655,7 @@ func (rf *Raft) ticker() {
 		}
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection in term %d receiveheartbeat:%v\n", rf.me, rf.currentTerm, rf.receiveHeartbeat)
 	}
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit select ticker\n", rf.me)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit select ticker\n", rf.me)
 }
 
 func (rf *Raft) startSelection() {
@@ -668,7 +664,7 @@ func (rf *Raft) startSelection() {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 	rf.currentTerm++
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection in term %d\n", rf.me, rf.currentTerm)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection in term %d\n", rf.me, rf.currentTerm)
 	rf.votedFor = rf.me
 	rf.persist()
 
@@ -694,7 +690,7 @@ func (rf *Raft) startSelection() {
 			defer rf.mu.Unlock()
 			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get lock args:%v, reply:%v\n", rf.me, args, reply)
 			if args.Term == rf.currentTerm {
-				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d recieve vote reply to %d for term %d,args:%v,reply:%v\n", rf.me, i, args.Term, args, reply)
+				//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d recieve vote reply to %d for term %d,args:%v,reply:%v\n", rf.me, i, args.Term, args, reply)
 			}
 
 			// appendix condition
@@ -744,7 +740,7 @@ func (rf *Raft) sendRequestVoteToPeer(i int, args *RequestVoteArgs, reply *Reque
 }
 
 func (rf *Raft) becomeLeader() {
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader with log:%v\n", rf.me, rf.log)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader with log:%v\n", rf.me, rf.log)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
 		rf.nextIndex[i] = rf.getLastIndex() + 1
@@ -755,30 +751,30 @@ func (rf *Raft) becomeLeader() {
 	rf.matchIndex[rf.me] = rf.getLastIndex()
 	// periodly heartbeat
 	go rf.syncLogTicker()
-	go func() {
-		time.Sleep(3000 * time.Millisecond)
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file0\n")
-		//这里是判断是否需要记录内存的逻辑
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file1\n")
-		memFile, err := os.Create("goroutine.prof")
-		if err != nil {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file2\n")
-			log.Println(err)
-		} else {
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file3\n")
-			log.Println("end write heap profile....")
-			pprof.Lookup("goroutine").WriteTo(memFile, 0)
-			//pprof.WriteHeapProfile(memFile)
-			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " end write\n")
-			defer memFile.Close()
-		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file5\n")
-	}()
+	//go func() {
+	//	time.Sleep(3000 * time.Millisecond)
+	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
+	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file0\n")
+	//	//这里是判断是否需要记录内存的逻辑
+	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file1\n")
+	//	memFile, err := os.Create("goroutine.prof")
+	//	if err != nil {
+	//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file2\n")
+	//		log.Println(err)
+	//	} else {
+	//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file3\n")
+	//		log.Println("end write heap profile....")
+	//		pprof.Lookup("goroutine").WriteTo(memFile, 0)
+	//		//pprof.WriteHeapProfile(memFile)
+	//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " end write\n")
+	//		defer memFile.Close()
+	//	}
+	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file5\n")
+	//}()
 }
 
 func (rf *Raft) syncLogTicker() {
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start sync log ticker\n", rf.me)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start sync log ticker\n", rf.me)
 	heartbeatDuring := time.Duration(100) * time.Millisecond
 	for !rf.killed() {
 		rf.mu.Lock()
@@ -796,12 +792,12 @@ func (rf *Raft) syncLogTicker() {
 		}
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d finish send heartbeat and wait new\n", rf.me)
 	}
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit sync log ticker\n", rf.me)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit sync log ticker\n", rf.me)
 }
 
 func (rf *Raft) sendAllHeartbeat() {
 	rf.mu.Lock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log:%v\n", rf.me, rf.isLeader, rf.log)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log:%v\n", rf.me, rf.isLeader, rf.log)
 	rf.mu.Unlock()
 
 	for i, peer := range rf.peers {
@@ -816,7 +812,7 @@ func (rf *Raft) sendSnapshotToPeer(i int, peer *labrpc.ClientEnd) {
 		return
 	}
 
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send snapshot to %d with isleader:%v snapshotIndex:%d\n", rf.me, i, rf.isLeader, rf.snapshotIndex)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send snapshot to %d with isleader:%v snapshotIndex:%d\n", rf.me, i, rf.isLeader, rf.snapshotIndex)
 
 	args := InstallSnapshotArgs{
 		Term:             rf.currentTerm,
@@ -859,7 +855,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	}
 
 	lastedEntryIndex := rf.getLastIndex()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, i:%d, rf.getlastIndex:%d, rf.nextIndex:%d\n", rf.me, i, rf.getLastIndex(), rf.nextIndex[i])
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, i:%d, rf.getlastIndex:%d, rf.nextIndex:%d\n", rf.me, i, rf.getLastIndex(), rf.nextIndex[i])
 	tempEntries := make([]Entry, rf.getLastIndex()+1-rf.nextIndex[i])
 	copy(tempEntries, rf.log[rf.getIndex(rf.nextIndex[i]):])
 	args := AppendEntriesArgs{
@@ -877,7 +873,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d send heartbeat ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Unlock()
 	ok := rf.sendAppendEntries(i, &args, &reply)
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Lock()
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v after lock\n", i, ok, reply.Success, reply)
 
@@ -895,7 +891,7 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	if reply.Success {
 		rf.updateMatchIndex(i, lastedEntryIndex)
 	} else {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v rf.nextIndex:%d\n", i, ok, reply.Success, reply, rf.nextIndex[i])
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d reply ok:%v, reply success:%v, with reply:%v rf.nextIndex:%d\n", i, ok, reply.Success, reply, rf.nextIndex[i])
 		if reply.ConflictTerm == -1 {
 			rf.nextIndex[i] = reply.ConflictIndex
 		} else {
@@ -979,14 +975,14 @@ func (rf *Raft) applyRoutine() {
 		case <-rf.applyRoutineCh:
 		}
 		rf.mu.Lock()
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, start to apply, rf.lastApplied:%d, rf.commitIndex:%d\n", rf.isLeader, rf.me, rf.lastApplied, rf.commitIndex)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, start to apply, rf.lastApplied:%d, rf.commitIndex:%d, rf.lastIndex:%d\n", rf.isLeader, rf.me, rf.lastApplied, rf.commitIndex, rf.getLastIndex())
 		for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
-
 			applyMsg := ApplyMsg{
 				CommandValid: true,
 				CommandIndex: rf.lastApplied + 1,
 				Command:      rf.getByIndex(rf.lastApplied + 1).Command,
 			}
+			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d send applymsg:%v\n", rf.me, applyMsg)
 			rf.mu.Unlock()
 			rf.applyCh <- applyMsg
 			rf.mu.Lock()

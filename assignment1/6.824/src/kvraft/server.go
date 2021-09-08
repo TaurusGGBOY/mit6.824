@@ -21,7 +21,7 @@ func DPrintf(format string, a ...interface{}) (n int, err error) {
 }
 
 type Op struct {
-	// TODO Your definitions here.
+	// Your definitions here.
 	// Field names must start with capital letters,
 	// otherwise RPC will break.
 	Key     string
@@ -40,7 +40,7 @@ type KVServer struct {
 
 	maxraftstate int // snapshot if log grows this big
 
-	// TODO Your definitions here.
+	// Your definitions here.
 	db       map[string]string
 	transIds map[int64]int
 	notifyCh map[int]chan bool
@@ -63,9 +63,13 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 			return
 		}
 
-		kv.notifyCh[index] = make(chan bool)
+		kv.mu.Lock()
+		kv.notifyCh[index] = make(chan bool, 1)
+		kv.mu.Unlock()
 		select {
 		case <-kv.notifyCh[index]:
+			kv.mu.Lock()
+			DPrintf("index:%d, apply success and notify get %v\n", index, cmd)
 			value, ok := kv.db[args.Key]
 			if !ok {
 				reply.Err = ErrNoKey
@@ -73,6 +77,8 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 			}
 			reply.Err = OK
 			reply.Value = value
+			kv.transIds[args.ClerkId]++
+			kv.mu.Unlock()
 			return
 		case <-time.After(ApplyTimeout):
 		}
@@ -94,10 +100,14 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			reply.Err = ErrWrongLeader
 			return
 		}
+		kv.mu.Lock()
+		kv.notifyCh[index] = make(chan bool, 1)
+		kv.mu.Unlock()
 
-		kv.notifyCh[index] = make(chan bool)
 		select {
 		case <-kv.notifyCh[index]:
+			kv.mu.Lock()
+			DPrintf("index:%d apply success and notify putAppend %v\n", index, cmd)
 			value, ok := kv.db[args.Key]
 			reply.Err = OK
 			if !ok || args.Op == "Put" {
@@ -105,6 +115,8 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			} else if args.Op == "Append" {
 				kv.db[args.Key] = value + args.Value
 			}
+			kv.transIds[args.ClerkId]++
+			kv.mu.Unlock()
 			return
 		case <-time.After(ApplyTimeout):
 		}
@@ -136,8 +148,30 @@ func (kv *KVServer) killed() bool {
 // TODO listen applyCh
 func (kv *KVServer) listen() {
 	for {
-
+		for msg := range kv.applyCh {
+			DPrintf("Receive apply msg %v\n", msg)
+			kv.mu.Lock()
+			send(kv.notifyCh[msg.CommandIndex])
+			DPrintf("send apply msg %v finish\n", msg)
+			kv.mu.Unlock()
+		}
 	}
+}
+
+func send(ch chan bool) {
+	DPrintf("ch sending len:%d, cap:%d\n", len(ch), cap(ch))
+	select {
+	case <-ch:
+		DPrintf("have ch\n")
+	default:
+		DPrintf("default ch\n")
+	}
+	DPrintf("send ch len:%d, cap:%d\n", len(ch), cap(ch))
+	if cap(ch) == 0 {
+		return
+	}
+	ch <- true
+	DPrintf("send ch finish len:%d\n", len(ch))
 }
 
 //
@@ -165,6 +199,8 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.db = map[string]string{}
 	kv.transIds = map[int64]int{}
 	kv.applyCh = make(chan raft.ApplyMsg)
+	kv.notifyCh = make(map[int]chan bool)
+
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	go kv.listen()
 	return kv

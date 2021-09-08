@@ -1,0 +1,462 @@
+2021-09-08 07:59:30 id:0 recover and read persist nothing get1
+2021-09-08 07:59:30 0 created
+2021-09-08 07:59:30 id:1 recover and read persist nothing get1
+2021-09-08 07:59:30 1 created
+2021-09-08 07:59:30 id:2 recover and read persist nothing get1
+2021-09-08 07:59:30 2 created
+2021-09-08 07:59:30 id:3 recover and read persist nothing get1
+2021-09-08 07:59:30 3 created
+2021-09-08 07:59:30 id:4 recover and read persist nothing get1
+2021-09-08 07:59:30 4 created
+Test: one client (3A) ...
+labgob warning: Decoding into a non-default variable/field Err may not work
+2021-09-08 07:59:30 4 start selection in term 1
+2021-09-08 07:59:30 3 start selection in term 1
+2021-09-08 07:59:30 0 update requestvote in term 0 from 4 for term 1
+2021-09-08 07:59:30 0 receive requestvote in term 1 from 4 for term 1
+2021-09-08 07:59:30 0 vote to candidate:4, can lastterm:0, can lastindex:0, my term:0, my index:0
+2021-09-08 07:59:30 1 update requestvote in term 0 from 4 for term 1
+2021-09-08 07:59:30 1 receive requestvote in term 1 from 4 for term 1
+2021-09-08 07:59:30 1 vote to candidate:4, can lastterm:0, can lastindex:0, my term:0, my index:0
+2021-09-08 07:59:30 4 recieve vote reply to 0 for term 1,args:{1 4 0 0},reply:{1 true}
+2021-09-08 07:59:30 4 recieve vote reply to 1 for term 1,args:{1 4 0 0},reply:{1 true}
+2021-09-08 07:59:30 4 become leader with log:[{0 <nil>}]
+2021-09-08 07:59:30 3 receive requestvote in term 1 from 4 for term 1
+2021-09-08 07:59:30 3 not vote for you but vote for 3
+2021-09-08 07:59:30 2 update requestvote in term 0 from 4 for term 1
+2021-09-08 07:59:30 2 receive requestvote in term 1 from 4 for term 1
+2021-09-08 07:59:30 4 start sync log ticker
+2021-09-08 07:59:30 2 vote to candidate:4, can lastterm:0, can lastindex:0, my term:0, my index:0
+2021-09-08 07:59:30 0 receive requestvote in term 1 from 3 for term 1
+2021-09-08 07:59:30 0 not vote for you but vote for 4
+2021-09-08 07:59:30 2 receive requestvote in term 1 from 3 for term 1
+2021-09-08 07:59:30 2 not vote for you but vote for 4
+2021-09-08 07:59:30 3 recieve vote reply to 0 for term 1,args:{1 3 0 0},reply:{1 false}
+2021-09-08 07:59:30 1 receive requestvote in term 1 from 3 for term 1
+2021-09-08 07:59:30 1 not vote for you but vote for 4
+2021-09-08 07:59:30 4 recieve vote reply to 2 for term 1,args:{1 4 0 0},reply:{1 true}
+2021-09-08 07:59:30 4 recieve vote reply to 3 for term 1,args:{1 4 0 0},reply:{1 false}
+2021-09-08 07:59:30 4 receive requestvote in term 1 from 3 for term 1
+2021-09-08 07:59:30 4 not vote for you but vote for 4
+2021-09-08 07:59:30 3 recieve vote reply to 2 for term 1,args:{1 3 0 0},reply:{1 false}
+2021-09-08 07:59:30 3 recieve vote reply to 1 for term 1,args:{1 3 0 0},reply:{1 false}
+2021-09-08 07:59:30 3 recieve vote reply to 4 for term 1,args:{1 3 0 0},reply:{1 false}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Put) 4581208426623798727 0}
+2021-09-08 07:59:30 id:1, removeIndex:1, args.prevLogIndex:0, len:1
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2, removeIndex:1, args.prevLogIndex:0, len:1
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0, removeIndex:1, args.prevLogIndex:0, len:1
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:3, removeIndex:1, args.prevLogIndex:0, len:1
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:0, rf.commitIndex:1, rf.lastIndex:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 me:4 send applymsg:{true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0  Put 4581208426623798727 0} 1 false [] 0 0} finish
+2021/09/08 07:59:30 index:1 apply success and notify putAppend {0  Put 4581208426623798727 0}
+2021-09-08 07:59:30 id:3, removeIndex:1, args.prevLogIndex:0, len:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:false me:2, start to apply, rf.lastApplied:0, rf.commitIndex:1, rf.lastIndex:1
+2021-09-08 07:59:30 me:2 send applymsg:{true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021-09-08 07:59:30 leader:false me:0, start to apply, rf.lastApplied:0, rf.commitIndex:1, rf.lastIndex:1
+2021-09-08 07:59:30 me:0 send applymsg:{true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021-09-08 07:59:30 leader:false me:3, start to apply, rf.lastApplied:0, rf.commitIndex:1, rf.lastIndex:1
+2021-09-08 07:59:30 me:3 send applymsg:{true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:0
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:0
+2021/09/08 07:59:30 Receive apply msg {true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:0
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:0
+2021/09/08 07:59:30 Receive apply msg {true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:0
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:0
+2021-09-08 07:59:30 leader:false me:1, start to apply, rf.lastApplied:0, rf.commitIndex:1, rf.lastIndex:1
+2021-09-08 07:59:30 me:1 send applymsg:{true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0  Put 4581208426623798727 0} 1 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:0
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:0
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 1}
+2021-09-08 07:59:30 id:1, removeIndex:2, args.prevLogIndex:1, len:1
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2, removeIndex:2, args.prevLogIndex:1, len:1
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0, removeIndex:2, args.prevLogIndex:1, len:1
+2021-09-08 07:59:30 id:3, removeIndex:2, args.prevLogIndex:1, len:1
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:1, rf.commitIndex:2, rf.lastIndex:2
+2021-09-08 07:59:30 me:4 send applymsg:{true {0  Get 4581208426623798727 1} 2 false [] 0 0}
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021/09/08 07:59:30 Receive apply msg {true {0  Get 4581208426623798727 1} 2 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0  Get 4581208426623798727 1} 2 false [] 0 0} finish
+2021/09/08 07:59:30 index:2, apply success and notify get {0  Get 4581208426623798727 1}
+2021-09-08 07:59:30 leader:false me:0, start to apply, rf.lastApplied:1, rf.commitIndex:2, rf.lastIndex:2
+2021-09-08 07:59:30 me:0 send applymsg:{true {0  Get 4581208426623798727 1} 2 false [] 0 0}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 0 y) %!d(string=Append) 4581208426623798727 2}
+2021-09-08 07:59:30 leader:false me:2, start to apply, rf.lastApplied:1, rf.commitIndex:2, rf.lastIndex:2
+2021-09-08 07:59:30 me:2 send applymsg:{true {0  Get 4581208426623798727 1} 2 false [] 0 0}
+2021-09-08 07:59:30 id:3, removeIndex:3, args.prevLogIndex:2, len:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:false me:3, start to apply, rf.lastApplied:1, rf.commitIndex:2, rf.lastIndex:3
+2021-09-08 07:59:30 me:3 send applymsg:{true {0  Get 4581208426623798727 1} 2 false [] 0 0}
+2021-09-08 07:59:30 id:1, removeIndex:3, args.prevLogIndex:2, len:1
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:false me:1, start to apply, rf.lastApplied:1, rf.commitIndex:2, rf.lastIndex:3
+2021-09-08 07:59:30 me:1 send applymsg:{true {0  Get 4581208426623798727 1} 2 false [] 0 0}
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:2, rf.commitIndex:3, rf.lastIndex:3
+2021-09-08 07:59:30 me:4 send applymsg:{true {0 x 0 0 y Append 4581208426623798727 2} 3 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0 x 0 0 y Append 4581208426623798727 2} 3 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0 x 0 0 y Append 4581208426623798727 2} 3 false [] 0 0} finish
+2021/09/08 07:59:30 index:3 apply success and notify putAppend {0 x 0 0 y Append 4581208426623798727 2}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 1 y) %!d(string=Append) 4581208426623798727 3}
+2021-09-08 07:59:30 id:2, removeIndex:3, args.prevLogIndex:2, len:1
+2021-09-08 07:59:30 id:0, removeIndex:3, args.prevLogIndex:2, len:1
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:3, removeIndex:4, args.prevLogIndex:3, len:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2, removeIndex:4, args.prevLogIndex:3, len:1
+2021-09-08 07:59:30 id:0, removeIndex:4, args.prevLogIndex:3, len:1
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:1, removeIndex:4, args.prevLogIndex:3, len:1
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:3, rf.commitIndex:4, rf.lastIndex:4
+2021-09-08 07:59:30 me:4 send applymsg:{true {0 x 0 1 y Append 4581208426623798727 3} 4 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0 x 0 1 y Append 4581208426623798727 3} 4 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0 x 0 1 y Append 4581208426623798727 3} 4 false [] 0 0} finish
+2021/09/08 07:59:30 index:4 apply success and notify putAppend {0 x 0 1 y Append 4581208426623798727 3}
+2021-09-08 07:59:30 id:1, removeIndex:4, args.prevLogIndex:3, len:1
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 2 y) %!d(string=Append) 4581208426623798727 4}
+2021-09-08 07:59:30 id:0, removeIndex:4, args.prevLogIndex:3, len:1
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0, removeIndex:5, args.prevLogIndex:4, len:1
+2021-09-08 07:59:30 id:1, removeIndex:5, args.prevLogIndex:4, len:1
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2, removeIndex:5, args.prevLogIndex:4, len:1
+2021-09-08 07:59:30 id:3, removeIndex:5, args.prevLogIndex:4, len:1
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:4, rf.commitIndex:5, rf.lastIndex:5
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 me:4 send applymsg:{true {0 x 0 2 y Append 4581208426623798727 4} 5 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0 x 0 2 y Append 4581208426623798727 4} 5 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0 x 0 2 y Append 4581208426623798727 4} 5 false [] 0 0} finish
+2021/09/08 07:59:30 index:5 apply success and notify putAppend {0 x 0 2 y Append 4581208426623798727 4}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 5}
+2021-09-08 07:59:30 id:1, removeIndex:6, args.prevLogIndex:5, len:1
+2021-09-08 07:59:30 id:3, removeIndex:6, args.prevLogIndex:5, len:1
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0, removeIndex:6, args.prevLogIndex:5, len:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2, removeIndex:6, args.prevLogIndex:5, len:1
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:5, rf.commitIndex:6, rf.lastIndex:6
+2021-09-08 07:59:30 me:4 send applymsg:{true {0  Get 4581208426623798727 5} 6 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0  Get 4581208426623798727 5} 6 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0  Get 4581208426623798727 5} 6 false [] 0 0} finish
+2021/09/08 07:59:30 index:6, apply success and notify get {0  Get 4581208426623798727 5}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 6}
+2021-09-08 07:59:30 id:3, removeIndex:7, args.prevLogIndex:6, len:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0, removeIndex:7, args.prevLogIndex:6, len:1
+2021-09-08 07:59:30 id:2, removeIndex:7, args.prevLogIndex:6, len:1
+2021-09-08 07:59:30 id:1, removeIndex:7, args.prevLogIndex:6, len:1
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:6, rf.commitIndex:7, rf.lastIndex:7
+2021-09-08 07:59:30 me:4 send applymsg:{true {0  Get 4581208426623798727 6} 7 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0  Get 4581208426623798727 6} 7 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0  Get 4581208426623798727 6} 7 false [] 0 0} finish
+2021/09/08 07:59:30 index:7, apply success and notify get {0  Get 4581208426623798727 6}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 3 y) %!d(string=Append) 4581208426623798727 7}
+2021-09-08 07:59:30 id:3, removeIndex:8, args.prevLogIndex:7, len:1
+2021-09-08 07:59:30 id:1, removeIndex:8, args.prevLogIndex:7, len:1
+2021-09-08 07:59:30 id:3 reply heartbeat and apply log
+2021-09-08 07:59:30 id:1 reply heartbeat and apply log
+2021-09-08 07:59:30 id:0, removeIndex:8, args.prevLogIndex:7, len:1
+2021-09-08 07:59:30 id:2, removeIndex:8, args.prevLogIndex:7, len:1
+2021-09-08 07:59:30 id:0 reply heartbeat and apply log
+2021-09-08 07:59:30 id:2 reply heartbeat and apply log
+2021-09-08 07:59:30 leader:true me:4, start to apply, rf.lastApplied:7, rf.commitIndex:8, rf.lastIndex:8
+2021-09-08 07:59:30 me:4 send applymsg:{true {0 x 0 3 y Append 4581208426623798727 7} 8 false [] 0 0}
+2021/09/08 07:59:30 Receive apply msg {true {0 x 0 3 y Append 4581208426623798727 7} 8 false [] 0 0}
+2021/09/08 07:59:30 ch sending len:0, cap:1
+2021/09/08 07:59:30 default ch
+2021/09/08 07:59:30 send ch len:0, cap:1
+2021/09/08 07:59:30 send ch finish len:0
+2021/09/08 07:59:30 send apply msg {true {0 x 0 3 y Append 4581208426623798727 7} 8 false [] 0 0} finish
+2021/09/08 07:59:30 index:8 apply success and notify putAppend {0 x 0 3 y Append 4581208426623798727 7}
+2021-09-08 07:59:30 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 4 y) %!d(string=Append) 4581208426623798727 8}
+2021-09-08 07:59:31 id:0, removeIndex:9, args.prevLogIndex:8, len:1
+2021-09-08 07:59:31 id:1, removeIndex:9, args.prevLogIndex:8, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3, removeIndex:9, args.prevLogIndex:8, len:1
+2021-09-08 07:59:31 id:2, removeIndex:9, args.prevLogIndex:8, len:1
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:8, rf.commitIndex:9, rf.lastIndex:9
+2021-09-08 07:59:31 me:4 send applymsg:{true {0 x 0 4 y Append 4581208426623798727 8} 9 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0 x 0 4 y Append 4581208426623798727 8} 9 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0 x 0 4 y Append 4581208426623798727 8} 9 false [] 0 0} finish
+2021/09/08 07:59:31 index:9 apply success and notify putAppend {0 x 0 4 y Append 4581208426623798727 8}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 5 y) %!d(string=Append) 4581208426623798727 9}
+2021-09-08 07:59:31 id:1, removeIndex:10, args.prevLogIndex:9, len:1
+2021-09-08 07:59:31 id:3, removeIndex:10, args.prevLogIndex:9, len:1
+2021-09-08 07:59:31 id:2, removeIndex:10, args.prevLogIndex:9, len:1
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:9, rf.commitIndex:10, rf.lastIndex:10
+2021-09-08 07:59:31 me:4 send applymsg:{true {0 x 0 5 y Append 4581208426623798727 9} 10 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0 x 0 5 y Append 4581208426623798727 9} 10 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0 x 0 5 y Append 4581208426623798727 9} 10 false [] 0 0} finish
+2021/09/08 07:59:31 index:10 apply success and notify putAppend {0 x 0 5 y Append 4581208426623798727 9}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 6 y) %!d(string=Append) 4581208426623798727 10}
+2021-09-08 07:59:31 id:0, removeIndex:10, args.prevLogIndex:9, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3, removeIndex:11, args.prevLogIndex:10, len:1
+2021-09-08 07:59:31 id:2, removeIndex:11, args.prevLogIndex:10, len:1
+2021-09-08 07:59:31 id:0, removeIndex:11, args.prevLogIndex:10, len:1
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1, removeIndex:11, args.prevLogIndex:10, len:1
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:10, rf.commitIndex:11, rf.lastIndex:11
+2021-09-08 07:59:31 me:4 send applymsg:{true {0 x 0 6 y Append 4581208426623798727 10} 11 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0 x 0 6 y Append 4581208426623798727 10} 11 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0 x 0 6 y Append 4581208426623798727 10} 11 false [] 0 0} finish
+2021/09/08 07:59:31 index:11 apply success and notify putAppend {0 x 0 6 y Append 4581208426623798727 10}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 11}
+2021-09-08 07:59:31 id:2, removeIndex:12, args.prevLogIndex:11, len:1
+2021-09-08 07:59:31 id:0, removeIndex:12, args.prevLogIndex:11, len:1
+2021-09-08 07:59:31 id:3, removeIndex:12, args.prevLogIndex:11, len:1
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1, removeIndex:12, args.prevLogIndex:11, len:1
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:11, rf.commitIndex:12, rf.lastIndex:12
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 11} 12 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 11} 12 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 11} 12 false [] 0 0} finish
+2021/09/08 07:59:31 index:12, apply success and notify get {0  Get 4581208426623798727 11}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 12}
+2021-09-08 07:59:31 id:2, removeIndex:13, args.prevLogIndex:12, len:1
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1, removeIndex:13, args.prevLogIndex:12, len:1
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0, removeIndex:13, args.prevLogIndex:12, len:1
+2021-09-08 07:59:31 id:3, removeIndex:13, args.prevLogIndex:12, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:12, rf.commitIndex:13, rf.lastIndex:13
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 12} 13 false [] 0 0}
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 12} 13 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 12} 13 false [] 0 0} finish
+2021/09/08 07:59:31 index:13, apply success and notify get {0  Get 4581208426623798727 12}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 13}
+2021-09-08 07:59:31 id:1, removeIndex:14, args.prevLogIndex:13, len:1
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2, removeIndex:14, args.prevLogIndex:13, len:1
+2021-09-08 07:59:31 id:3, removeIndex:14, args.prevLogIndex:13, len:1
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0, removeIndex:14, args.prevLogIndex:13, len:1
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:13, rf.commitIndex:14, rf.lastIndex:14
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 13} 14 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 13} 14 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 13} 14 false [] 0 0} finish
+2021/09/08 07:59:31 index:14, apply success and notify get {0  Get 4581208426623798727 13}
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 14}
+2021-09-08 07:59:31 id:0, removeIndex:15, args.prevLogIndex:14, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1, removeIndex:15, args.prevLogIndex:14, len:1
+2021-09-08 07:59:31 id:2, removeIndex:15, args.prevLogIndex:14, len:1
+2021-09-08 07:59:31 id:3, removeIndex:15, args.prevLogIndex:14, len:1
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:14, rf.commitIndex:15, rf.lastIndex:15
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 14} 15 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 14} 15 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 14} 15 false [] 0 0} finish
+2021/09/08 07:59:31 index:15, apply success and notify get {0  Get 4581208426623798727 14}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 15}
+2021-09-08 07:59:31 id:2, removeIndex:16, args.prevLogIndex:15, len:1
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0, removeIndex:16, args.prevLogIndex:15, len:1
+2021-09-08 07:59:31 id:1, removeIndex:16, args.prevLogIndex:15, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3, removeIndex:16, args.prevLogIndex:15, len:1
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:15, rf.commitIndex:16, rf.lastIndex:16
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 15} 16 false [] 0 0}
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 15} 16 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 15} 16 false [] 0 0} finish
+2021/09/08 07:59:31 index:16, apply success and notify get {0  Get 4581208426623798727 15}
+2021-09-08 07:59:31 id:3, removeIndex:16, args.prevLogIndex:15, len:1
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 16}
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0, removeIndex:17, args.prevLogIndex:16, len:1
+2021-09-08 07:59:31 id:2, removeIndex:17, args.prevLogIndex:16, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3, removeIndex:17, args.prevLogIndex:16, len:1
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:16, rf.commitIndex:17, rf.lastIndex:17
+2021-09-08 07:59:31 id:1, removeIndex:17, args.prevLogIndex:16, len:1
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 16} 17 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 16} 17 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 16} 17 false [] 0 0} finish
+2021/09/08 07:59:31 index:17, apply success and notify get {0  Get 4581208426623798727 16}
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 17}
+2021-09-08 07:59:31 id:3, removeIndex:18, args.prevLogIndex:17, len:1
+2021-09-08 07:59:31 id:2, removeIndex:18, args.prevLogIndex:17, len:1
+2021-09-08 07:59:31 id:1, removeIndex:18, args.prevLogIndex:17, len:1
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:17, rf.commitIndex:18, rf.lastIndex:18
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 17} 18 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 17} 18 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 17} 18 false [] 0 0} finish
+2021/09/08 07:59:31 index:18, apply success and notify get {0  Get 4581208426623798727 17}
+2021-09-08 07:59:31 id:0, removeIndex:18, args.prevLogIndex:17, len:1
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 18}
+2021-09-08 07:59:31 id:1, removeIndex:19, args.prevLogIndex:18, len:1
+2021-09-08 07:59:31 id:3, removeIndex:19, args.prevLogIndex:18, len:1
+2021-09-08 07:59:31 id:0, removeIndex:19, args.prevLogIndex:18, len:1
+2021-09-08 07:59:31 id:2, removeIndex:19, args.prevLogIndex:18, len:1
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:18, rf.commitIndex:19, rf.lastIndex:19
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 18} 19 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 18} 19 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 18} 19 false [] 0 0} finish
+2021/09/08 07:59:31 index:19, apply success and notify get {0  Get 4581208426623798727 18}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=) %!d(string=Get) 4581208426623798727 19}
+2021-09-08 07:59:31 id:2, removeIndex:20, args.prevLogIndex:19, len:1
+2021-09-08 07:59:31 id:1, removeIndex:20, args.prevLogIndex:19, len:1
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:19, rf.commitIndex:20, rf.lastIndex:20
+2021-09-08 07:59:31 me:4 send applymsg:{true {0  Get 4581208426623798727 19} 20 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0  Get 4581208426623798727 19} 20 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0  Get 4581208426623798727 19} 20 false [] 0 0} finish
+2021/09/08 07:59:31 index:20, apply success and notify get {0  Get 4581208426623798727 19}
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 7 y) %!d(string=Append) 4581208426623798727 20}
+2021-09-08 07:59:31 id:0, removeIndex:20, args.prevLogIndex:19, len:1
+2021-09-08 07:59:31 id:2, removeIndex:21, args.prevLogIndex:20, len:1
+2021-09-08 07:59:31 id:3, removeIndex:20, args.prevLogIndex:19, len:2
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:2 reply heartbeat and apply log
+2021-09-08 07:59:31 id:3 reply heartbeat and apply log
+2021-09-08 07:59:31 leader:true me:4, start to apply, rf.lastApplied:20, rf.commitIndex:21, rf.lastIndex:21
+2021-09-08 07:59:31 me:4 send applymsg:{true {0 x 0 7 y Append 4581208426623798727 20} 21 false [] 0 0}
+2021/09/08 07:59:31 Receive apply msg {true {0 x 0 7 y Append 4581208426623798727 20} 21 false [] 0 0}
+2021/09/08 07:59:31 ch sending len:0, cap:1
+2021/09/08 07:59:31 default ch
+2021/09/08 07:59:31 send ch len:0, cap:1
+2021/09/08 07:59:31 send ch finish len:0
+2021/09/08 07:59:31 send apply msg {true {0 x 0 7 y Append 4581208426623798727 20} 21 false [] 0 0} finish
+2021/09/08 07:59:31 index:21 apply success and notify putAppend {0 x 0 7 y Append 4581208426623798727 20}
+2021-09-08 07:59:31 id:0, removeIndex:21, args.prevLogIndex:20, len:1
+2021-09-08 07:59:31 id:1, removeIndex:21, args.prevLogIndex:20, len:1
+2021-09-08 07:59:31 leader:4, in term:1, start cmd {%!d(string=0) %!d(string=x 0 8 y) %!d(string=Append) 4581208426623798727 21}
+2021-09-08 07:59:31 id:0 reply heartbeat and apply log
+2021-09-08 07:59:31 id:1 reply heartbeat and apply log
+signal: interrupt
+FAIL	6.824/kvraft	1.961s

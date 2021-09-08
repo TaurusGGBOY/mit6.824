@@ -2,6 +2,7 @@ package kvraft
 
 import (
 	"6.824/labrpc"
+	"sync"
 )
 import "crypto/rand"
 import "math/big"
@@ -12,6 +13,7 @@ type Clerk struct {
 	clerkId int64
 	prevLeaderId  int
 	transactionId int
+	mu sync.Mutex
 }
 
 func nrand() int64 {
@@ -44,6 +46,8 @@ func MakeClerk(servers []*labrpc.ClientEnd) *Clerk {
 // arguments. and reply must be passed as a pointer.
 //
 func (ck *Clerk) Get(key string) string {
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
 	args := GetArgs{
 		Key:           key,
 		ClerkId:  ck.clerkId,
@@ -52,8 +56,10 @@ func (ck *Clerk) Get(key string) string {
 	reply := GetReply{}
 
 	for {
+		ck.mu.Unlock()
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.Get", &args, &reply)
 		// ou will have to modify this function.
+		ck.mu.Lock()
 		if !ok || reply.Err == "" {
 			continue
 		}
@@ -85,6 +91,8 @@ func (ck *Clerk) Get(key string) string {
 //
 func (ck *Clerk) PutAppend(key string, value string, op string) {
 	// You will have to modify this function.
+	ck.mu.Lock()
+	defer ck.mu.Unlock()
 	args := PutAppendArgs{
 		Key:           key,
 		Value:         value,
@@ -95,8 +103,10 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 	reply := PutAppendReply{}
 
 	for {
+		ck.mu.Unlock()
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.PutAppend", &args, &reply)
 		// You will have to modify this function.
+		ck.mu.Lock()
 		if !ok || reply.Err == "" {
 			continue
 		}
