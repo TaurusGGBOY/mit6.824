@@ -526,7 +526,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 				break
 			}
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d, log:%v\n", rf.me, args.PrevLogIndex, args.PrevLogTerm, reply.ConflictIndex, reply.ConflictTerm, rf.commitIndex, rf.log)
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d\n", rf.me, args.PrevLogIndex, args.PrevLogTerm, reply.ConflictIndex, reply.ConflictTerm, rf.commitIndex)
 		return
 	}
 
@@ -603,6 +603,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// if it is
 	index = rf.getLastIndex()
 	term = rf.currentTerm
+	send(rf.heartBeatCh)
 	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
 	return index, term, isLeader
 }

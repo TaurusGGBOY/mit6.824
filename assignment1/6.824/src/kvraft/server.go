@@ -64,10 +64,11 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 
 		kv.mu.Lock()
-		kv.notifyCh[index] = make(chan bool, 1)
+		ch := make(chan bool, 1)
+		kv.notifyCh[index] = ch
 		kv.mu.Unlock()
 		select {
-		case <-kv.notifyCh[index]:
+		case <-ch:
 			kv.mu.Lock()
 			DPrintf("index:%d, apply success and notify get %v\n", index, cmd)
 			value, ok := kv.db[args.Key]
@@ -77,7 +78,6 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 			}
 			reply.Err = OK
 			reply.Value = value
-			kv.transIds[args.ClerkId]++
 			kv.mu.Unlock()
 			return
 		case <-time.After(ApplyTimeout):
@@ -95,27 +95,23 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		TransId: args.TransactionId,
 	}
 	for {
+
 		index, _, isleader := kv.rf.Start(cmd)
+
 		if !isleader {
 			reply.Err = ErrWrongLeader
 			return
 		}
 		kv.mu.Lock()
-		kv.notifyCh[index] = make(chan bool, 1)
+		ch := make(chan bool, 1)
+		kv.notifyCh[index] = ch
 		kv.mu.Unlock()
 
 		select {
-		case <-kv.notifyCh[index]:
+		case <-ch:
 			kv.mu.Lock()
 			DPrintf("index:%d apply success and notify putAppend %v\n", index, cmd)
-			value, ok := kv.db[args.Key]
 			reply.Err = OK
-			if !ok || args.Op == "Put" {
-				kv.db[args.Key] = args.Value
-			} else if args.Op == "Append" {
-				kv.db[args.Key] = value + args.Value
-			}
-			kv.transIds[args.ClerkId]++
 			kv.mu.Unlock()
 			return
 		case <-time.After(ApplyTimeout):
@@ -150,7 +146,19 @@ func (kv *KVServer) listen() {
 	for {
 		for msg := range kv.applyCh {
 			DPrintf("Receive apply msg %v\n", msg)
+			op := msg.Command.(Op)
+			if op.TransId < kv.transIds[op.ClerkId] {
+				continue
+			}
 			kv.mu.Lock()
+			value, ok := kv.db[op.Key]
+			if !ok || op.Type == "Put" {
+				kv.db[op.Key] = op.Value
+			} else if op.Type == "Append" {
+				kv.db[op.Key] = value + op.Value
+			}
+
+			kv.transIds[op.ClerkId]++
 			send(kv.notifyCh[msg.CommandIndex])
 			DPrintf("send apply msg %v finish\n", msg)
 			kv.mu.Unlock()
@@ -159,19 +167,22 @@ func (kv *KVServer) listen() {
 }
 
 func send(ch chan bool) {
-	DPrintf("ch sending len:%d, cap:%d\n", len(ch), cap(ch))
+	//DPrintf("ch sending len:%d, cap:%d, empty:%v\n", len(ch), cap(ch), ch)
+	if ch == nil {
+		return
+	}
 	select {
 	case <-ch:
-		DPrintf("have ch\n")
+		//DPrintf("have ch\n")
 	default:
-		DPrintf("default ch\n")
+		//DPrintf("default ch\n")
 	}
-	DPrintf("send ch len:%d, cap:%d\n", len(ch), cap(ch))
+	//DPrintf("send ch len:%d, cap:%d\n", len(ch), cap(ch))
 	if cap(ch) == 0 {
 		return
 	}
 	ch <- true
-	DPrintf("send ch finish len:%d\n", len(ch))
+	//DPrintf("send ch finish len:%d\n", len(ch))
 }
 
 //
@@ -199,7 +210,7 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.db = map[string]string{}
 	kv.transIds = map[int64]int{}
 	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.notifyCh = make(map[int]chan bool)
+	kv.notifyCh = map[int]chan bool{}
 
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	go kv.listen()
