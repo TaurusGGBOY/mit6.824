@@ -61,17 +61,21 @@ func (ck *Clerk) Get(key string) string {
 		// ou will have to modify this function.
 		ck.mu.Lock()
 		if !ok || reply.Err == "" {
+			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
 			continue
 		}
 		if reply.Err == OK {
+			DPrintf("ok reply\n")
 			ck.transactionId++
 			return reply.Value
 		}
 		if reply.Err == ErrNoKey {
+			DPrintf("errnokey\n")
 			ck.transactionId++
 			return ""
 		}
 		if reply.Err == ErrWrongLeader {
+			DPrintf("clerk:%d, wrong leader:%d\n", ck.clerkId, ck.prevLeaderId)
 			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
 			continue
 		}
@@ -108,17 +112,17 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		// You will have to modify this function.
 		ck.mu.Lock()
 		if !ok || reply.Err == "" {
+			DPrintf("clerkId:%d, timeout, prev:%d\n", ck.clerkId, ck.prevLeaderId)
+			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
 			continue
 		}
 		if reply.Err == OK {
-			ck.transactionId++
-			return
-		}
-		if reply.Err == ErrNoKey {
+			DPrintf("put append ok reply\n")
 			ck.transactionId++
 			return
 		}
 		if reply.Err == ErrWrongLeader {
+			DPrintf("clerkId:%d, ErrWrongLeader, prev:%d\n", ck.clerkId, ck.prevLeaderId)
 			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
 			continue
 		}

@@ -41,13 +41,30 @@ type KVServer struct {
 	maxraftstate int // snapshot if log grows this big
 
 	// Your definitions here.
-	db       map[string]string
-	transIds map[int64]int
-	notifyCh map[int]chan bool
+	db          map[string]string
+	lastTransId map[int64]int
+	notifyCh    map[int]chan Op
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
-	// TODO first no idempotence
+	_, isleader := kv.rf.GetState()
+	if !isleader {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
+	kv.mu.Lock()
+	// have commit can direct reply
+	if transId, ok := kv.lastTransId[args.ClerkId]; ok && args.TransactionId <= transId {
+		DPrintf("get op.transId %d, lastTransId %d\n", args.TransactionId, transId)
+		reply.Err = "OK"
+		value := kv.db[args.Key]
+		reply.Value = value
+		kv.mu.Unlock()
+		return
+	}
+	kv.mu.Unlock()
+
 	cmd := Op{
 		Key:     args.Key,
 		Value:   "",
@@ -56,37 +73,60 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		TransId: args.TransactionId,
 	}
 	reply.Value = ""
-	for {
-		index, _, isleader := kv.rf.Start(cmd)
-		if !isleader {
-			reply.Err = ErrWrongLeader
-			return
-		}
+	index, _, isleader := kv.rf.Start(cmd)
+	if !isleader {
+		reply.Err = ErrWrongLeader
+		return
+	}
 
+	kv.mu.Lock()
+	ch := make(chan Op, 1)
+	kv.notifyCh[index] = ch
+	kv.mu.Unlock()
+	select {
+	case op := <-ch:
 		kv.mu.Lock()
-		ch := make(chan bool, 1)
-		kv.notifyCh[index] = ch
-		kv.mu.Unlock()
-		select {
-		case <-ch:
-			kv.mu.Lock()
-			DPrintf("index:%d, apply success and notify get %v\n", index, cmd)
-			value, ok := kv.db[args.Key]
-			if !ok {
-				reply.Err = ErrNoKey
-				return
-			}
-			reply.Err = OK
-			reply.Value = value
+		delete(kv.notifyCh, index)
+		if op.ClerkId != args.ClerkId || op.TransId != args.TransactionId {
+			reply.Err = ErrWrongLeader
 			kv.mu.Unlock()
 			return
-		case <-time.After(ApplyTimeout):
 		}
+		DPrintf("index:%d, apply success and notify get\n", index)
+
+		value, ok := kv.db[cmd.Key]
+		if !ok {
+			reply.Err = ErrNoKey
+			kv.mu.Unlock()
+			return
+		}
+		reply.Err = OK
+		reply.Value = value
+		DPrintf("index:%d, apply success and notify get value\n", index)
+		kv.mu.Unlock()
+		return
+	case <-time.After(ApplyTimeout):
+		reply.Err = ErrWrongLeader
 	}
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	// TODO first no idempotence.
+	_, isleader := kv.rf.GetState()
+	if !isleader {
+		reply.Err = ErrWrongLeader
+		return
+	}
+
+	kv.mu.Lock()
+	// have put or append
+	if transId, ok := kv.lastTransId[args.ClerkId]; ok && args.TransactionId <= transId {
+		DPrintf("put append op.transId %d, lastTransId %d\n", args.TransactionId, transId)
+		reply.Err = OK
+		kv.mu.Unlock()
+		return
+	}
+	kv.mu.Unlock()
+
 	cmd := Op{
 		Key:     args.Key,
 		Value:   args.Value,
@@ -94,28 +134,38 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		ClerkId: args.ClerkId,
 		TransId: args.TransactionId,
 	}
-	for {
 
-		index, _, isleader := kv.rf.Start(cmd)
+	index, _, isleader := kv.rf.Start(cmd)
 
-		if !isleader {
-			reply.Err = ErrWrongLeader
-			return
-		}
+	if !isleader {
+		reply.Err = ErrWrongLeader
+		return
+	}
+	kv.mu.Lock()
+
+	ch := make(chan Op, 1)
+	kv.notifyCh[index] = ch
+	kv.mu.Unlock()
+
+	select {
+	case op := <-ch:
 		kv.mu.Lock()
-		ch := make(chan bool, 1)
-		kv.notifyCh[index] = ch
-		kv.mu.Unlock()
-
-		select {
-		case <-ch:
-			kv.mu.Lock()
-			DPrintf("index:%d apply success and notify putAppend %v\n", index, cmd)
-			reply.Err = OK
+		delete(kv.notifyCh, index)
+		// important: may a wrong leader to reply, but receive this can
+		if op.ClerkId != args.ClerkId || op.TransId != args.TransactionId {
+			reply.Err = ErrWrongLeader
+			DPrintf("I'm not leader now %d\n", kv.me)
 			kv.mu.Unlock()
 			return
-		case <-time.After(ApplyTimeout):
 		}
+		DPrintf("index:%d apply success and notify putAppend\n", index,)
+
+		reply.Err = OK
+		kv.mu.Unlock()
+		return
+	case <-time.After(ApplyTimeout):
+		DPrintf("timeout change leader: %d\n", kv.me)
+		reply.Err = ErrWrongLeader
 	}
 }
 
@@ -145,22 +195,33 @@ func (kv *KVServer) killed() bool {
 func (kv *KVServer) listen() {
 	for {
 		for msg := range kv.applyCh {
-			DPrintf("Receive apply msg %v\n", msg)
+			DPrintf("Receive apply msg\n")
 			op := msg.Command.(Op)
-			if op.TransId < kv.transIds[op.ClerkId] {
+			kv.mu.Lock()
+
+			lastTransId, ok1 := kv.lastTransId[op.ClerkId]
+			if ok1 && op.TransId <= lastTransId {
+				DPrintf("op.transId %d, lastTransId %d\n", op.TransId, lastTransId)
+				kv.mu.Unlock()
 				continue
 			}
-			kv.mu.Lock()
-			value, ok := kv.db[op.Key]
-			if !ok || op.Type == "Put" {
-				kv.db[op.Key] = op.Value
-			} else if op.Type == "Append" {
-				kv.db[op.Key] = value + op.Value
-			}
 
-			kv.transIds[op.ClerkId]++
-			send(kv.notifyCh[msg.CommandIndex])
-			DPrintf("send apply msg %v finish\n", msg)
+			// important: it must be here to ensure that follower can change their db
+
+			if op.Type == "Put" {
+				kv.db[op.Key] = op.Value
+				//DPrintf("put %s\n", kv.db[op.Key])
+			} else if op.Type == "Append" {
+				// if no value then empty string
+				value := kv.db[op.Key]
+				kv.db[op.Key] = value + op.Value
+				//DPrintf("append %s\n", kv.db[op.Key])
+			}
+			kv.lastTransId[op.ClerkId] = op.TransId
+
+			// follower may not wait for channel msg
+			sendOp(kv.notifyCh[msg.CommandIndex], op)
+			DPrintf("send apply msg finish\n")
 			kv.mu.Unlock()
 		}
 	}
@@ -182,6 +243,21 @@ func send(ch chan bool) {
 		return
 	}
 	ch <- true
+	//DPrintf("send ch finish len:%d\n", len(ch))
+}
+
+func sendOp(ch chan Op, op Op) {
+	if ch == nil {
+		return
+	}
+	select {
+	case <-ch:
+	default:
+	}
+	if cap(ch) == 0 {
+		return
+	}
+	ch <- op
 	//DPrintf("send ch finish len:%d\n", len(ch))
 }
 
@@ -208,9 +284,9 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.me = me
 	kv.maxraftstate = maxraftstate
 	kv.db = map[string]string{}
-	kv.transIds = map[int64]int{}
+	kv.lastTransId = map[int64]int{}
 	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.notifyCh = map[int]chan bool{}
+	kv.notifyCh = map[int]chan Op{}
 
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
 	go kv.listen()

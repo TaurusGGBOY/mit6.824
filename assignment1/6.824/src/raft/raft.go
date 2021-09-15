@@ -741,7 +741,7 @@ func (rf *Raft) sendRequestVoteToPeer(i int, args *RequestVoteArgs, reply *Reque
 }
 
 func (rf *Raft) becomeLeader() {
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader with log:%v\n", rf.me, rf.log)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
 		rf.nextIndex[i] = rf.getLastIndex() + 1
