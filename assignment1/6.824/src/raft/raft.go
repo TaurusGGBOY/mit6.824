@@ -161,6 +161,7 @@ func (rf *Raft) GetState() (int, bool) {
 // see paper's Figure 2 for a description of what should be persistent.
 //
 func (rf *Raft) persist() {
+	now := time.Now()
 	// Your code here (2C).
 	// Example:
 	w := new(bytes.Buffer)
@@ -174,6 +175,7 @@ func (rf *Raft) persist() {
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d persist term:%d, voteFor:%d, commitIndex:%d\n", rf.me, rf.currentTerm, rf.votedFor, rf.commitIndex)
 	data := w.Bytes()
 	rf.persister.SaveStateAndSnapshot(data, rf.snapshot)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" persist time:%v\n", time.Since(now))
 }
 
 //
@@ -314,6 +316,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
+	// persist once
+	ifPersist := false
+	defer func() {
+		if ifPersist {
+			rf.persist()
+		}
+	}()
 	reply.Term = rf.currentTerm
 
 	// election restriction 1 bigger term win
@@ -328,11 +337,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.votedFor = -1
 		rf.isLeader = false
 		reply.Term = rf.currentTerm
-		rf.persist()
-	}
-
-	if args.Term == rf.currentTerm {
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive requestvote in term %d from %d for term %d\n", rf.me, rf.currentTerm, args.CandidateId, args.Term)
+		ifPersist = true
 	}
 
 	// 5.4.2 selection restriction
@@ -345,7 +350,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = true
 		send(rf.voteCh)
 		rf.votedFor = args.CandidateId
-		rf.persist()
+		ifPersist = true
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.getByIndex(rf.getLastIndex()).Term, rf.getLastIndex())
 		return
 	}
@@ -464,6 +469,14 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// heart beat and log
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+
+	ifPersist := false
+	defer func() {
+		if ifPersist {
+			rf.persist()
+		}
+	}()
+
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d in term %d receive ReceiveAppendEntries from %d with term %d, isleader:%v\n", rf.me, rf.currentTerm, args.LeaderId, args.Term, rf.isLeader)
 	// init reply
 	reply.Term = rf.currentTerm
@@ -487,9 +500,9 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	send(rf.appendEntryCh)
 
 	if rf.currentTerm < args.Term {
-		rf.votedFor = -1
+		//rf.votedFor = -1
 		rf.currentTerm = args.Term
-		rf.persist()
+		ifPersist = true
 	}
 
 	// only term > me then give up leader
@@ -540,29 +553,17 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d, removeIndex:%d, args.prevLogIndex:%d, len:%d\n", rf.me, removeIndex, args.PrevLogIndex, len(args.Entries))
 		rf.log = rf.log[:rf.getIndex(removeIndex)]
 		rf.log = append(rf.log, args.Entries[(removeIndex-args.PrevLogIndex-1):]...)
-		rf.persist()
-		defer func() {
-			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d reply heartbeat and apply log\n", rf.me)
-		}()
+		ifPersist = true
 	}
 
 	// update commitIndex
 	if args.LeaderCommit > rf.commitIndex {
 		rf.commitIndex = args.LeaderCommit
-		rf.persist()
+		ifPersist = true
 		send(rf.applyRoutineCh)
 	}
 
-	// update lastApplied
-	// before confirm apply, one should confirm if they are the same
 	reply.Success = true
-	if len(args.Entries) > 0 {
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + "ReceiveAppendEntries: end\n")
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" ReceiveAppendEntries: EntryLen %d, leaderCommit %d, leaderId %d, pervLogIndex %d, prevLogTerm %d, term %d\n",
-		//	len(args.Entries), args.LeaderCommit, args.LeaderId, args.PrevLogIndex, args.PrevLogTerm, args.Term)
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" ReceiveAppendEntries: me: %d, commitIndex: %d, lastApplied: %d, matchIndex: %d, nextIndex: %d, logLen: %d\n",
-		//	rf.me, rf.commitIndex, rf.lastApplied, rf.matchIndex, rf.nextIndex, rf.getLastIndex()+1)
-	}
 }
 
 //
@@ -664,10 +665,16 @@ func (rf *Raft) startSelection() {
 	// not receive heart beat and start a se vglection
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	ifPersist := false
+	defer func() {
+		if ifPersist {
+			rf.persist()
+		}
+	}()
 	rf.currentTerm++
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d start selection in term %d\n", rf.me, rf.currentTerm)
 	rf.votedFor = rf.me
-	rf.persist()
+	ifPersist = true
 
 	args := RequestVoteArgs{
 		Term:         rf.currentTerm,
@@ -701,7 +708,7 @@ func (rf *Raft) startSelection() {
 
 			if reply.Term > rf.currentTerm {
 				rf.currentTerm = reply.Term
-				rf.persist()
+				ifPersist =true
 				return
 			}
 
@@ -752,26 +759,6 @@ func (rf *Raft) becomeLeader() {
 	rf.matchIndex[rf.me] = rf.getLastIndex()
 	// periodly heartbeat
 	go rf.syncLogTicker()
-	//go func() {
-	//	time.Sleep(3000 * time.Millisecond)
-	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
-	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file0\n")
-	//	//这里是判断是否需要记录内存的逻辑
-	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file1\n")
-	//	memFile, err := os.Create("goroutine.prof")
-	//	if err != nil {
-	//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file2\n")
-	//		log.Println(err)
-	//	} else {
-	//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file3\n")
-	//		log.Println("end write heap profile....")
-	//		pprof.Lookup("goroutine").WriteTo(memFile, 0)
-	//		//pprof.WriteHeapProfile(memFile)
-	//		fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " end write\n")
-	//		defer memFile.Close()
-	//	}
-	//	fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file5\n")
-	//}()
 }
 
 func (rf *Raft) syncLogTicker() {
@@ -798,7 +785,7 @@ func (rf *Raft) syncLogTicker() {
 
 func (rf *Raft) sendAllHeartbeat() {
 	rf.mu.Lock()
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log:%v\n", rf.me, rf.isLeader, rf.log)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log\n", rf.me, rf.isLeader)
 	rf.mu.Unlock()
 
 	for i, peer := range rf.peers {
@@ -843,6 +830,7 @@ func (rf *Raft) sendSnapshotToPeer(i int, peer *labrpc.ClientEnd) {
 	// update matchIndex
 	rf.updateMatchIndex(i, args.LastIncludeIndex)
 }
+
 func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -910,6 +898,13 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 }
 
 func (rf *Raft) updateMatchIndex(i int, index int) {
+	ifPersist := false
+	defer func() {
+		if ifPersist {
+			rf.persist()
+		}
+	}()
+
 	if rf.matchIndex[i] >= index {
 		return
 	}
@@ -931,7 +926,7 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 			if count > len(rf.peers)/2 {
 				rf.commitIndex++
 				//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex to %d and want to apply\n", rf.me, rf.commitIndex)
-				rf.persist()
+				ifPersist = true
 				// apply is end state, commit is not
 				send(rf.applyRoutineCh)
 			}

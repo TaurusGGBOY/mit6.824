@@ -106,6 +106,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		kv.mu.Unlock()
 		return
 	case <-time.After(ApplyTimeout):
+		delete(kv.notifyCh, index)
 		reply.Err = ErrWrongLeader
 	}
 }
@@ -135,14 +136,15 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		TransId: args.TransactionId,
 	}
 
+	now := time.Now()
 	index, _, isleader := kv.rf.Start(cmd)
+
 
 	if !isleader {
 		reply.Err = ErrWrongLeader
 		return
 	}
 	kv.mu.Lock()
-
 	ch := make(chan Op, 1)
 	kv.notifyCh[index] = ch
 	kv.mu.Unlock()
@@ -162,8 +164,10 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 
 		reply.Err = OK
 		kv.mu.Unlock()
+		DPrintf("cost time :%v", time.Since(now))
 		return
 	case <-time.After(ApplyTimeout):
+		delete(kv.notifyCh, index)
 		DPrintf("timeout change leader: %d\n", kv.me)
 		reply.Err = ErrWrongLeader
 	}
@@ -220,7 +224,9 @@ func (kv *KVServer) listen() {
 			kv.lastTransId[op.ClerkId] = op.TransId
 
 			// follower may not wait for channel msg
+			sendOpStart :=time.Now()
 			sendOp(kv.notifyCh[msg.CommandIndex], op)
+			DPrintf("sendOp time: %v", time.Since(sendOpStart))
 			DPrintf("send apply msg finish\n")
 			kv.mu.Unlock()
 		}
