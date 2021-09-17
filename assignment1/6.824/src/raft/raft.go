@@ -21,7 +21,6 @@ import (
 	"6.824/labgob"
 	"bytes"
 	"errors"
-	"fmt"
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -161,7 +160,6 @@ func (rf *Raft) GetState() (int, bool) {
 // see paper's Figure 2 for a description of what should be persistent.
 //
 func (rf *Raft) persist() {
-	now := time.Now()
 	// Your code here (2C).
 	// Example:
 	w := new(bytes.Buffer)
@@ -175,7 +173,7 @@ func (rf *Raft) persist() {
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d persist term:%d, voteFor:%d, commitIndex:%d\n", rf.me, rf.currentTerm, rf.votedFor, rf.commitIndex)
 	data := w.Bytes()
 	rf.persister.SaveStateAndSnapshot(data, rf.snapshot)
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" persist time:%v\n", time.Since(now))
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" persist time:%v\n", time.Since(now))
 }
 
 //
@@ -183,7 +181,7 @@ func (rf *Raft) persist() {
 //
 func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 	if data == nil || len(data) < 1 { // bootstrap without any state?
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get1\n", rf.me)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get1\n", rf.me)
 		return errors.New("nothing get")
 	}
 	// Your code here (2C).
@@ -197,7 +195,7 @@ func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 	var snapshotTerm int
 	var snapshotIndex int
 	if d.Decode(&currentTerm) != nil || d.Decode(&votedFor) != nil || d.Decode(&log) != nil || d.Decode(&commitIndex) != nil || d.Decode(&snapshotTerm) != nil || d.Decode(&snapshotIndex) != nil {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get2\n", rf.me)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist nothing get2\n", rf.me)
 		return errors.New("nothing get")
 	} else {
 		rf.currentTerm = currentTerm
@@ -209,7 +207,7 @@ func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 		rf.snapshotTerm = snapshotTerm
 		rf.snapshotIndex = snapshotIndex
 		rf.snapshot = snapshot
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist term:%d, voteFor:%d,commitIndex:%d\n", rf.me, rf.currentTerm, rf.votedFor, rf.commitIndex)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d recover and read persist term:%d, voteFor:%d,commitIndex:%d\n", rf.me, rf.currentTerm, rf.votedFor, rf.commitIndex)
 		return nil
 	}
 }
@@ -220,7 +218,7 @@ func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 //
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d\n", rf.me, lastIncludedIndex)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d\n", rf.me, lastIncludedIndex)
 	// Your code here (2D).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -260,7 +258,7 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // that index. Raft should now trim its log as much as possible.
 func (rf *Raft) Snapshot(index int, snapshot []byte) {
 	// Your code here (2D).
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d\n", rf.me, index)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d\n", rf.me, index)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -405,7 +403,7 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 func (rf *Raft) ReceiveInstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive snapshot from %d, term mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive snapshot from %d, term mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
 	reply.Term = rf.currentTerm
 
 	// 1 Reply immediately if term < currentTerm
@@ -460,7 +458,7 @@ func (rf *Raft) getByIndex(index int) Entry {
 	} else if index > rf.snapshotIndex {
 		return rf.log[index-rf.snapshotIndex-1]
 	} else {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, snapshotIndex:%d, lastIndex:%d, getIndex:%d\n", rf.me, rf.snapshotIndex, rf.getLastIndex(), index)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d, snapshotIndex:%d, lastIndex:%d, getIndex:%d\n", rf.me, rf.snapshotIndex, rf.getLastIndex(), index)
 		panic("wrong index!")
 	}
 }
@@ -488,7 +486,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 	// no use to distinguish heart beart
 	// high term heart beat
 	if rf.currentTerm > args.Term {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong term from %d, mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
 		reply.Success = false
 		return
 	}
@@ -507,14 +505,14 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 
 	// only term > me then give up leader
 	if rf.isLeader {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit leader and give leader to %d at term %d\n", rf.me, args.LeaderId, args.Term)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d quit leader and give leader to %d at term %d\n", rf.me, args.LeaderId, args.Term)
 		rf.isLeader = false
 		reply.Success = false
 		return
 	}
 
 	if args.PrevLogIndex < rf.snapshotIndex {
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong prevlogindex %d\n", rf.me, args.PrevLogIndex)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong prevlogindex %d\n", rf.me, args.PrevLogIndex)
 		reply.Success = false
 		return
 	}
@@ -539,7 +537,7 @@ func (rf *Raft) ReceiveAppendEntries(args *AppendEntriesArgs, reply *AppendEntri
 				break
 			}
 		}
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d\n", rf.me, args.PrevLogIndex, args.PrevLogTerm, reply.ConflictIndex, reply.ConflictTerm, rf.commitIndex)
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive wrong logindex and term:%d,%d,my my get logindex and term:%d,%d,commitIndex:%d\n", rf.me, args.PrevLogIndex, args.PrevLogTerm, reply.ConflictIndex, reply.ConflictTerm, rf.commitIndex)
 		return
 	}
 
@@ -605,7 +603,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = rf.getLastIndex()
 	term = rf.currentTerm
 	send(rf.heartBeatCh)
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
 	return index, term, isLeader
 }
 
@@ -748,7 +746,7 @@ func (rf *Raft) sendRequestVoteToPeer(i int, args *RequestVoteArgs, reply *Reque
 }
 
 func (rf *Raft) becomeLeader() {
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
 		rf.nextIndex[i] = rf.getLastIndex() + 1
@@ -785,7 +783,7 @@ func (rf *Raft) syncLogTicker() {
 
 func (rf *Raft) sendAllHeartbeat() {
 	rf.mu.Lock()
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log\n", rf.me, rf.isLeader)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log\n", rf.me, rf.isLeader)
 	rf.mu.Unlock()
 
 	for i, peer := range rf.peers {
@@ -971,7 +969,7 @@ func (rf *Raft) applyRoutine() {
 		case <-rf.applyRoutineCh:
 		}
 		rf.mu.Lock()
-		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, start to apply, rf.lastApplied:%d, rf.commitIndex:%d, rf.lastIndex:%d\n", rf.isLeader, rf.me, rf.lastApplied, rf.commitIndex, rf.getLastIndex())
+		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, start to apply, rf.lastApplied:%d, rf.commitIndex:%d, rf.lastIndex:%d\n", rf.isLeader, rf.me, rf.lastApplied, rf.commitIndex, rf.getLastIndex())
 		for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
 			applyMsg := ApplyMsg{
 				CommandValid: true,
@@ -1043,7 +1041,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	rf.lastApplied = rf.snapshotIndex
 
 	// start ticker goroutine to start elections
-	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d created\n", me)
 	go rf.ticker()
 	// start apply routine watch commitIndex
 	go rf.applyRoutine()

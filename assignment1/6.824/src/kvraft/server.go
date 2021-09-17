@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const Debug = true
+const Debug = false
 const ApplyTimeout = 800 * time.Millisecond
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
@@ -106,7 +106,9 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		kv.mu.Unlock()
 		return
 	case <-time.After(ApplyTimeout):
+		kv.mu.Lock()
 		delete(kv.notifyCh, index)
+		kv.mu.Unlock()
 		reply.Err = ErrWrongLeader
 	}
 }
@@ -167,7 +169,9 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		DPrintf("cost time :%v", time.Since(now))
 		return
 	case <-time.After(ApplyTimeout):
+		kv.mu.Lock()
 		delete(kv.notifyCh, index)
+		kv.mu.Unlock()
 		DPrintf("timeout change leader: %d\n", kv.me)
 		reply.Err = ErrWrongLeader
 	}
