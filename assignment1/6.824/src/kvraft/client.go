@@ -53,10 +53,13 @@ func (ck *Clerk) Get(key string) string {
 		ClerkId:  ck.clerkId,
 		TransactionId: ck.transactionId,
 	}
-	reply := GetReply{}
 
 	for {
 		ck.mu.Unlock()
+		reply := GetReply{
+			Err: "",
+			Value: "",
+		}
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.Get", &args, &reply)
 		// ou will have to modify this function.
 		ck.mu.Lock()
@@ -104,10 +107,12 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		TransactionId: ck.transactionId,
 		ClerkId: ck.clerkId,
 	}
-	reply := PutAppendReply{}
 
 	for {
 		ck.mu.Unlock()
+		reply := PutAppendReply{
+			Err:"",
+		}
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.PutAppend", &args, &reply)
 		// You will have to modify this function.
 		ck.mu.Lock()

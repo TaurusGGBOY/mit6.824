@@ -5,6 +5,7 @@ import (
 	"6.824/labrpc"
 	"6.824/raft"
 	"log"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -114,6 +115,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
+	DPrintf("goroutine:%d", runtime.NumGoroutine())
 	_, isleader := kv.rf.GetState()
 	if !isleader {
 		reply.Err = ErrWrongLeader
