@@ -107,6 +107,11 @@ type Raft struct {
 	snapshot      []byte
 	snapshotTerm  int
 	snapshotIndex int
+
+	// 3B
+	maxraftstate      int
+	snapshotRoutineCh chan bool
+	kvSnapshotCh      chan []byte
 }
 
 type AppendEntriesArgs struct {
@@ -706,7 +711,7 @@ func (rf *Raft) startSelection() {
 
 			if reply.Term > rf.currentTerm {
 				rf.currentTerm = reply.Term
-				ifPersist =true
+				ifPersist = true
 				return
 			}
 
@@ -986,7 +991,51 @@ func (rf *Raft) applyRoutine() {
 			send(rf.applySnapshotCh)
 			send(rf.heartBeatCh)
 		}
+
+		// notify snapshotRoutine
+		send(rf.snapshotRoutineCh)
+
 		rf.mu.Unlock()
+	}
+}
+
+// 3B
+func (rf *Raft) SetKvSnapshotCh(kvSnapshotCh chan []byte) {
+	rf.kvSnapshotCh = kvSnapshotCh
+}
+
+func (rf *Raft) SetMaxraftstate(maxraftstate int) {
+	rf.maxraftstate = maxraftstate
+}
+
+func (rf *Raft) shouldSnapshot() bool {
+	return rf.maxraftstate != -1 && rf.persister.RaftStateSize() >= rf.maxraftstate
+}
+
+func (rf *Raft) snapshotRoutine() {
+	for !rf.killed() {
+		select {
+		case <-rf.snapshotRoutineCh:
+		}
+		rf.mu.Lock()
+		if !rf.shouldSnapshot() {
+			rf.mu.Unlock()
+			continue
+		}
+		applymsg := ApplyMsg{
+			SnapshotValid: true,
+			Snapshot:      nil,
+			SnapshotTerm:  rf.currentTerm,
+			SnapshotIndex: rf.lastApplied,
+		}
+		lastApplied := rf.lastApplied
+		rf.mu.Unlock()
+
+		rf.applyCh <- applymsg
+		snapshot := <-rf.kvSnapshotCh
+		if len(snapshot) != 0 {
+			rf.Snapshot(lastApplied, snapshot)
+		}
 	}
 }
 
@@ -1004,27 +1053,30 @@ func (rf *Raft) applyRoutine() {
 func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
 	// Your initialization code here (2A, 2B, 2C).
 	rf := &Raft{
-		peers:           peers,
-		persister:       persister,
-		me:              me,
-		isLeader:        false,
-		currentTerm:     0,
-		votedFor:        -1,
-		commitIndex:     0,
-		lastApplied:     0,
-		matchIndex:      make([]int, len(peers)),
-		nextIndex:       make([]int, len(peers)),
-		applyCh:         applyCh,
-		closeCh:         make(chan struct{}),
-		voteCh:          make(chan bool, 1),
-		appendEntryCh:   make(chan bool, 1),
-		heartBeatCh:     make(chan bool, 1),
-		snapshotCh:      make(chan bool, 1),
-		applySnapshotCh: make(chan bool, 1),
-		applyRoutineCh:  make(chan bool, 1),
-		snapshot:        make([]byte, 0),
-		snapshotIndex:   0,
-		snapshotTerm:    0,
+		peers:             peers,
+		persister:         persister,
+		me:                me,
+		isLeader:          false,
+		currentTerm:       0,
+		votedFor:          -1,
+		commitIndex:       0,
+		lastApplied:       0,
+		matchIndex:        make([]int, len(peers)),
+		nextIndex:         make([]int, len(peers)),
+		applyCh:           applyCh,
+		closeCh:           make(chan struct{}),
+		voteCh:            make(chan bool, 1),
+		appendEntryCh:     make(chan bool, 1),
+		heartBeatCh:       make(chan bool, 1),
+		snapshotCh:        make(chan bool, 1),
+		applySnapshotCh:   make(chan bool, 1),
+		applyRoutineCh:    make(chan bool, 1),
+		snapshot:          make([]byte, 0),
+		snapshotIndex:     0,
+		snapshotTerm:      0,
+		maxraftstate:      0,
+		snapshotRoutineCh: make(chan bool, 1),
+		kvSnapshotCh:      make(chan []byte, 1),
 	}
 
 	// initialize from state persisted before a crash
@@ -1045,5 +1097,7 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	go rf.ticker()
 	// start apply routine watch commitIndex
 	go rf.applyRoutine()
+
+	go rf.snapshotRoutine()
 	return rf
 }

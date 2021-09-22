@@ -4,6 +4,7 @@ import (
 	"6.824/labgob"
 	"6.824/labrpc"
 	"6.824/raft"
+	"bytes"
 	"log"
 	"runtime"
 	"sync"
@@ -45,6 +46,11 @@ type KVServer struct {
 	db          map[string]string
 	lastTransId map[int64]int
 	notifyCh    map[int]chan Op
+
+	// 3B
+	kvSnapshotCh  chan []byte
+	snapshotIndex int
+	snapshotTerm  int
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -143,7 +149,6 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	now := time.Now()
 	index, _, isleader := kv.rf.Start(cmd)
 
-
 	if !isleader {
 		reply.Err = ErrWrongLeader
 		return
@@ -164,7 +169,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			kv.mu.Unlock()
 			return
 		}
-		DPrintf("index:%d apply success and notify putAppend\n", index,)
+		DPrintf("index:%d apply success and notify putAppend\n", index)
 
 		reply.Err = OK
 		kv.mu.Unlock()
@@ -205,36 +210,56 @@ func (kv *KVServer) killed() bool {
 func (kv *KVServer) listen() {
 	for {
 		for msg := range kv.applyCh {
-			DPrintf("Receive apply msg\n")
-			op := msg.Command.(Op)
-			kv.mu.Lock()
+			// TODO snapshot
+			if msg.CommandValid {
+				DPrintf("Receive apply msg\n")
+				op := msg.Command.(Op)
+				kv.mu.Lock()
 
-			lastTransId, ok1 := kv.lastTransId[op.ClerkId]
-			if ok1 && op.TransId <= lastTransId {
-				DPrintf("op.transId %d, lastTransId %d\n", op.TransId, lastTransId)
+				lastTransId, ok1 := kv.lastTransId[op.ClerkId]
+				if ok1 && op.TransId <= lastTransId {
+					DPrintf("op.transId %d, lastTransId %d\n", op.TransId, lastTransId)
+					kv.mu.Unlock()
+					continue
+				}
+
+				// important: it must be here to ensure that follower can change their db
+				if op.Type == "Put" {
+					kv.db[op.Key] = op.Value
+					//DPrintf("put %s\n", kv.db[op.Key])
+				} else if op.Type == "Append" {
+					// if no value then empty string
+					value := kv.db[op.Key]
+					kv.db[op.Key] = value + op.Value
+					//DPrintf("append %s\n", kv.db[op.Key])
+				}
+				kv.lastTransId[op.ClerkId] = op.TransId
+
+				// follower may not wait for channel msg
+				sendOpStart := time.Now()
+				sendOp(kv.notifyCh[msg.CommandIndex], op)
+				DPrintf("sendOp time: %v", time.Since(sendOpStart))
+				DPrintf("send apply msg finish\n")
 				kv.mu.Unlock()
-				continue
+			} else if msg.SnapshotValid {
+				// TODO follower snapshot apply
+				if msg.Snapshot == nil {
+					snapshot := make([]byte, 0)
+					if msg.SnapshotIndex >= kv.snapshotIndex && msg.SnapshotTerm >= kv.snapshotTerm {
+						snapshot = kv.snapshot()
+						kv.snapshotIndex = msg.SnapshotIndex
+						kv.snapshotTerm = msg.SnapshotTerm
+					}
+					kv.kvSnapshotCh <- snapshot
+				} else {
+					if msg.SnapshotIndex >= kv.snapshotIndex && msg.SnapshotTerm >= kv.snapshotTerm {
+						if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot){
+							kv.snapshotIndex = msg.SnapshotIndex
+							kv.snapshotTerm = msg.SnapshotTerm
+						}
+					}
+				}
 			}
-
-			// important: it must be here to ensure that follower can change their db
-
-			if op.Type == "Put" {
-				kv.db[op.Key] = op.Value
-				//DPrintf("put %s\n", kv.db[op.Key])
-			} else if op.Type == "Append" {
-				// if no value then empty string
-				value := kv.db[op.Key]
-				kv.db[op.Key] = value + op.Value
-				//DPrintf("append %s\n", kv.db[op.Key])
-			}
-			kv.lastTransId[op.ClerkId] = op.TransId
-
-			// follower may not wait for channel msg
-			sendOpStart :=time.Now()
-			sendOp(kv.notifyCh[msg.CommandIndex], op)
-			DPrintf("sendOp time: %v", time.Since(sendOpStart))
-			DPrintf("send apply msg finish\n")
-			kv.mu.Unlock()
 		}
 	}
 }
@@ -273,6 +298,13 @@ func sendOp(ch chan Op, op Op) {
 	//DPrintf("send ch finish len:%d\n", len(ch))
 }
 
+func (kv *KVServer) snapshot() []byte {
+	w := new(bytes.Buffer)
+	e := labgob.NewEncoder(w)
+	e.Encode(kv.db)
+	return w.Bytes()
+}
+
 //
 // servers[] contains the ports of the set of
 // servers that will cooperate via Raft to
@@ -299,8 +331,14 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	kv.lastTransId = map[int64]int{}
 	kv.applyCh = make(chan raft.ApplyMsg)
 	kv.notifyCh = map[int]chan Op{}
+	kv.kvSnapshotCh = make(chan []byte, 1)
 
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
+	kv.rf.SetMaxraftstate(kv.maxraftstate)
+	kv.rf.SetKvSnapshotCh(kv.kvSnapshotCh)
+	kv.snapshotIndex = 0
+	kv.snapshotTerm = 0
+
 	go kv.listen()
 	return kv
 }
