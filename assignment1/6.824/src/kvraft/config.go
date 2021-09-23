@@ -257,6 +257,7 @@ func (cfg *config) DisconnectClient(ck *Clerk, from []int) {
 func (cfg *config) ShutdownServer(i int) {
 	cfg.mu.Lock()
 	defer cfg.mu.Unlock()
+	DPrintf("shutdown server %d", i)
 
 	cfg.disconnectUnlocked(i, cfg.All())
 

@@ -10,10 +10,10 @@ import "math/big"
 type Clerk struct {
 	servers []*labrpc.ClientEnd
 	// You will have to modify this struct.
-	clerkId int64
+	clerkId       int64
 	prevLeaderId  int
 	transactionId int
-	mu sync.Mutex
+	mu            sync.Mutex
 }
 
 func nrand() int64 {
@@ -50,14 +50,14 @@ func (ck *Clerk) Get(key string) string {
 	defer ck.mu.Unlock()
 	args := GetArgs{
 		Key:           key,
-		ClerkId:  ck.clerkId,
+		ClerkId:       ck.clerkId,
 		TransactionId: ck.transactionId,
 	}
 
 	for {
 		ck.mu.Unlock()
 		reply := GetReply{
-			Err: "",
+			Err:   "",
 			Value: "",
 		}
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.Get", &args, &reply)
@@ -105,13 +105,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		Value:         value,
 		Op:            op,
 		TransactionId: ck.transactionId,
-		ClerkId: ck.clerkId,
+		ClerkId:       ck.clerkId,
 	}
 
 	for {
 		ck.mu.Unlock()
 		reply := PutAppendReply{
-			Err:"",
+			Err: "",
 		}
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.PutAppend", &args, &reply)
 		// You will have to modify this function.
@@ -122,7 +122,7 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 			continue
 		}
 		if reply.Err == OK {
-			DPrintf("put append ok reply\n")
+			DPrintf("put append ok reply args:%v\n", args)
 			ck.transactionId++
 			return
 		}

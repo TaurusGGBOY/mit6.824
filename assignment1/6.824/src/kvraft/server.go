@@ -5,6 +5,7 @@ import (
 	"6.824/labrpc"
 	"6.824/raft"
 	"bytes"
+	"errors"
 	"log"
 	"runtime"
 	"sync"
@@ -12,7 +13,7 @@ import (
 	"time"
 )
 
-const Debug = false
+const Debug = true
 const ApplyTimeout = 800 * time.Millisecond
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
@@ -45,12 +46,12 @@ type KVServer struct {
 	// Your definitions here.
 	db          map[string]string
 	lastTransId map[int64]int
-	notifyCh    map[int]chan Op
+	notifyCh    map[int]chan raft.ApplyMsg
 
 	// 3B
-	kvSnapshotCh  chan []byte
 	snapshotIndex int
-	snapshotTerm  int
+	persister     *raft.Persister
+	newestIndex   int
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
@@ -87,11 +88,12 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 	}
 
 	kv.mu.Lock()
-	ch := make(chan Op, 1)
+	ch := make(chan raft.ApplyMsg, 1)
 	kv.notifyCh[index] = ch
 	kv.mu.Unlock()
 	select {
-	case op := <-ch:
+	case msg := <-ch:
+		op := msg.Command.(Op)
 		kv.mu.Lock()
 		delete(kv.notifyCh, index)
 		if op.ClerkId != args.ClerkId || op.TransId != args.TransactionId {
@@ -109,7 +111,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 		}
 		reply.Err = OK
 		reply.Value = value
-		DPrintf("index:%d, apply success and notify get value\n", index)
+		DPrintf("index:%d, apply success and notify get value %v\n", index, msg)
 		kv.mu.Unlock()
 		return
 	case <-time.After(ApplyTimeout):
@@ -146,7 +148,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		TransId: args.TransactionId,
 	}
 
-	now := time.Now()
+	//now := time.Now()
 	index, _, isleader := kv.rf.Start(cmd)
 
 	if !isleader {
@@ -154,14 +156,15 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 		return
 	}
 	kv.mu.Lock()
-	ch := make(chan Op, 1)
+	ch := make(chan raft.ApplyMsg, 1)
 	kv.notifyCh[index] = ch
 	kv.mu.Unlock()
 
 	select {
-	case op := <-ch:
+	case msg := <-ch:
 		kv.mu.Lock()
 		delete(kv.notifyCh, index)
+		op := msg.Command.(Op)
 		// important: may a wrong leader to reply, but receive this can
 		if op.ClerkId != args.ClerkId || op.TransId != args.TransactionId {
 			reply.Err = ErrWrongLeader
@@ -170,10 +173,10 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			return
 		}
 		DPrintf("index:%d apply success and notify putAppend\n", index)
-
 		reply.Err = OK
+
 		kv.mu.Unlock()
-		DPrintf("cost time :%v", time.Since(now))
+		//DPrintf("cost time :%v", time.Since(now))
 		return
 	case <-time.After(ApplyTimeout):
 		kv.mu.Lock()
@@ -212,7 +215,7 @@ func (kv *KVServer) listen() {
 		for msg := range kv.applyCh {
 			// TODO snapshot
 			if msg.CommandValid {
-				DPrintf("Receive apply msg\n")
+				DPrintf("Receive apply msg:%v\n", msg)
 				op := msg.Command.(Op)
 				kv.mu.Lock()
 
@@ -234,31 +237,25 @@ func (kv *KVServer) listen() {
 					//DPrintf("append %s\n", kv.db[op.Key])
 				}
 				kv.lastTransId[op.ClerkId] = op.TransId
-
 				// follower may not wait for channel msg
-				sendOpStart := time.Now()
-				sendOp(kv.notifyCh[msg.CommandIndex], op)
-				DPrintf("sendOp time: %v", time.Since(sendOpStart))
-				DPrintf("send apply msg finish\n")
+				sendMsg(kv.notifyCh[msg.CommandIndex], msg)
+
+				kv.newestIndex = max(kv.newestIndex, msg.CommandIndex)
+				kv.snapshotNow(msg)
+
 				kv.mu.Unlock()
 			} else if msg.SnapshotValid {
-				// TODO follower snapshot apply
-				if msg.Snapshot == nil {
-					snapshot := make([]byte, 0)
-					if msg.SnapshotIndex >= kv.snapshotIndex && msg.SnapshotTerm >= kv.snapshotTerm {
-						snapshot = kv.snapshot()
-						kv.snapshotIndex = msg.SnapshotIndex
-						kv.snapshotTerm = msg.SnapshotTerm
-					}
-					kv.kvSnapshotCh <- snapshot
-				} else {
-					if msg.SnapshotIndex >= kv.snapshotIndex && msg.SnapshotTerm >= kv.snapshotTerm {
-						if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot){
-							kv.snapshotIndex = msg.SnapshotIndex
-							kv.snapshotTerm = msg.SnapshotTerm
-						}
+				kv.mu.Lock()
+				DPrintf("Receive snapshot apply msg %v\n", msg)
+				if msg.SnapshotIndex >= kv.snapshotIndex {
+					if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+						DPrintf("condition install succcess %v\n", msg)
+						kv.readSnapshot(msg.Snapshot)
+					} else {
+						DPrintf("condition install fail %v\n", msg)
 					}
 				}
+				kv.mu.Unlock()
 			}
 		}
 	}
@@ -283,7 +280,7 @@ func send(ch chan bool) {
 	//DPrintf("send ch finish len:%d\n", len(ch))
 }
 
-func sendOp(ch chan Op, op Op) {
+func sendMsg(ch chan raft.ApplyMsg, msg raft.ApplyMsg) {
 	if ch == nil {
 		return
 	}
@@ -294,15 +291,68 @@ func sendOp(ch chan Op, op Op) {
 	if cap(ch) == 0 {
 		return
 	}
-	ch <- op
+	ch <- msg
 	//DPrintf("send ch finish len:%d\n", len(ch))
 }
 
-func (kv *KVServer) snapshot() []byte {
+func (kv *KVServer) generateSnapshot() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
+	e.Encode(kv.snapshotIndex)
 	e.Encode(kv.db)
 	return w.Bytes()
+}
+
+func (kv *KVServer) readSnapshot(data []byte) error {
+	if data == nil || len(data) < 1 { // bootstrap without any state?
+		return errors.New("no data")
+	}
+
+	r := bytes.NewBuffer(data)
+	d := labgob.NewDecoder(r)
+	var snapshotIndex int
+	var db map[string]string
+	if d.Decode(&snapshotIndex) != nil || d.Decode(&db) != nil {
+		return errors.New("read wrong")
+	} else {
+		DPrintf("recover snapshotIndex:%d", kv.snapshotIndex)
+		kv.snapshotIndex = snapshotIndex
+		kv.db = db
+		return nil
+	}
+}
+
+func (kv *KVServer) shouldSnapshot() bool {
+	DPrintf("max:%d, raftsize:%d ", kv.maxraftstate, kv.persister.RaftStateSize())
+	return kv.maxraftstate != -1 && kv.persister.RaftStateSize() >= kv.maxraftstate
+}
+
+func max(a int, b int) int {
+	if a > b {
+		return a
+	} else {
+		return b
+	}
+}
+
+func min(a int, b int) int {
+	if a < b {
+		return a
+	} else {
+		return b
+	}
+}
+
+func (kv *KVServer) snapshotNow(msg raft.ApplyMsg) {
+	if kv.shouldSnapshot() {
+		snapshot := kv.generateSnapshot()
+		if kv.rf.Snapshot(kv.newestIndex, snapshot) {
+			DPrintf("snapshot successs napshotindex:%v\n", msg)
+			kv.snapshotIndex = kv.newestIndex
+		} else {
+			DPrintf("snapshotfail snapshotindex:%v\n", msg)
+		}
+	}
 }
 
 //
@@ -324,21 +374,24 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	// Go's RPC library to marshall/unmarshall.
 	labgob.Register(Op{})
 
-	kv := new(KVServer)
-	kv.me = me
-	kv.maxraftstate = maxraftstate
-	kv.db = map[string]string{}
-	kv.lastTransId = map[int64]int{}
-	kv.applyCh = make(chan raft.ApplyMsg)
-	kv.notifyCh = map[int]chan Op{}
-	kv.kvSnapshotCh = make(chan []byte, 1)
+	kv := KVServer{
+		me:            me,
+		maxraftstate:  maxraftstate,
+		db:            map[string]string{},
+		lastTransId:   map[int64]int{},
+		applyCh:       make(chan raft.ApplyMsg),
+		notifyCh:      map[int]chan raft.ApplyMsg{},
+		snapshotIndex: 0,
+		persister:     persister,
+	}
 
 	kv.rf = raft.Make(servers, me, persister, kv.applyCh)
-	kv.rf.SetMaxraftstate(kv.maxraftstate)
-	kv.rf.SetKvSnapshotCh(kv.kvSnapshotCh)
-	kv.snapshotIndex = 0
-	kv.snapshotTerm = 0
 
+	err := kv.readSnapshot(kv.persister.ReadSnapshot())
+	if err != nil {
+		DPrintf("error %v", err)
+	}
+	kv.newestIndex = kv.snapshotIndex
 	go kv.listen()
-	return kv
+	return &kv
 }

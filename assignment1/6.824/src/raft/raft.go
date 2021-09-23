@@ -107,11 +107,6 @@ type Raft struct {
 	snapshot      []byte
 	snapshotTerm  int
 	snapshotIndex int
-
-	// 3B
-	maxraftstate      int
-	snapshotRoutineCh chan bool
-	kvSnapshotCh      chan []byte
 }
 
 type AppendEntriesArgs struct {
@@ -135,7 +130,7 @@ type InstallSnapshotArgs struct {
 	Term             int
 	LeaderId         int
 	LastIncludeIndex int
-	LastIncludedTer  int
+	LastIncludedTerm int
 	Data             []byte
 	Done             bool
 }
@@ -223,7 +218,7 @@ func (rf *Raft) readPersist(data []byte, snapshot []byte) error {
 //
 func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int, snapshot []byte) bool {
 
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d\n", rf.me, lastIncludedIndex)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d conditionInstall index:%d, lastIndex:%d, snapshotIndex:%d\n", rf.me, lastIncludedIndex, rf.getLastIndex(), rf.snapshotIndex)
 	// Your code here (2D).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -234,8 +229,16 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	default:
 	}
 
+	// if this snapshot is old one
+	if lastIncludedIndex < rf.snapshotIndex {
+		return false
+	}
+
 	if lastIncludedIndex >= rf.getLastIndex() {
 		rf.log = make([]Entry, 0)
+	} else if lastIncludedIndex < rf.snapshotIndex {
+		// if this is a out-of-date condInstallSnapshot
+		return false
 	} else {
 		rf.log = append([]Entry{}, rf.log[rf.getIndex(lastIncludedIndex)+1:]...)
 	}
@@ -261,16 +264,15 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 // all info up to and including index. this means the
 // service no longer needs the log through (and including)
 // that index. Raft should now trim its log as much as possible.
-func (rf *Raft) Snapshot(index int, snapshot []byte) {
+func (rf *Raft) Snapshot(index int, snapshot []byte) bool {
 	// Your code here (2D).
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d\n", rf.me, index)
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" id:%d snapshot index:%d, lastIndex:%d\n", rf.me, index, rf.getLastIndex())
 	// important: the order of these cmd
 	lastIndex := rf.getLastIndex()
-	if index > lastIndex {
-		return
+	if index > lastIndex || index < rf.snapshotIndex {
+		return false
 	}
 	rf.snapshot = snapshot
 	rf.snapshotTerm = rf.getByIndex(index).Term
@@ -287,6 +289,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 
 	// 8. Reset state machine using snapshot contents (and load snapshot’s cluster configuration)
 	send(rf.snapshotCh)
+	return true
 }
 
 //
@@ -408,7 +411,7 @@ func (rf *Raft) sendInstallSnapshot(server int, args *InstallSnapshotArgs, reply
 func (rf *Raft) ReceiveInstallSnapshot(args *InstallSnapshotArgs, reply *InstallSnapshotReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive snapshot from %d, term mine:%d, yours:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term)
+	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d receive snapshot from %d, term mine:%d, yours:%d, my snapshotIndex:%d, lastIndex:%d\n", rf.me, args.LeaderId, rf.currentTerm, args.Term, rf.snapshotIndex, rf.getLastIndex())
 	reply.Term = rf.currentTerm
 
 	// 1 Reply immediately if term < currentTerm
@@ -426,7 +429,7 @@ func (rf *Raft) ReceiveInstallSnapshot(args *InstallSnapshotArgs, reply *Install
 		SnapshotValid: true,
 		Snapshot:      args.Data,
 		SnapshotIndex: args.LastIncludeIndex,
-		SnapshotTerm:  args.LastIncludedTer,
+		SnapshotTerm:  args.LastIncludedTerm,
 	}
 	rf.mu.Lock()
 
@@ -809,7 +812,7 @@ func (rf *Raft) sendSnapshotToPeer(i int, peer *labrpc.ClientEnd) {
 		Term:             rf.currentTerm,
 		LeaderId:         rf.me,
 		LastIncludeIndex: rf.snapshotIndex,
-		LastIncludedTer:  rf.snapshotTerm,
+		LastIncludedTerm: rf.snapshotTerm,
 		Data:             rf.snapshot,
 		Done:             true,
 	}
@@ -992,50 +995,7 @@ func (rf *Raft) applyRoutine() {
 			send(rf.heartBeatCh)
 		}
 
-		// notify snapshotRoutine
-		send(rf.snapshotRoutineCh)
-
 		rf.mu.Unlock()
-	}
-}
-
-// 3B
-func (rf *Raft) SetKvSnapshotCh(kvSnapshotCh chan []byte) {
-	rf.kvSnapshotCh = kvSnapshotCh
-}
-
-func (rf *Raft) SetMaxraftstate(maxraftstate int) {
-	rf.maxraftstate = maxraftstate
-}
-
-func (rf *Raft) shouldSnapshot() bool {
-	return rf.maxraftstate != -1 && rf.persister.RaftStateSize() >= rf.maxraftstate
-}
-
-func (rf *Raft) snapshotRoutine() {
-	for !rf.killed() {
-		select {
-		case <-rf.snapshotRoutineCh:
-		}
-		rf.mu.Lock()
-		if !rf.shouldSnapshot() {
-			rf.mu.Unlock()
-			continue
-		}
-		applymsg := ApplyMsg{
-			SnapshotValid: true,
-			Snapshot:      nil,
-			SnapshotTerm:  rf.currentTerm,
-			SnapshotIndex: rf.lastApplied,
-		}
-		lastApplied := rf.lastApplied
-		rf.mu.Unlock()
-
-		rf.applyCh <- applymsg
-		snapshot := <-rf.kvSnapshotCh
-		if len(snapshot) != 0 {
-			rf.Snapshot(lastApplied, snapshot)
-		}
 	}
 }
 
@@ -1053,30 +1013,27 @@ func (rf *Raft) snapshotRoutine() {
 func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan ApplyMsg) *Raft {
 	// Your initialization code here (2A, 2B, 2C).
 	rf := &Raft{
-		peers:             peers,
-		persister:         persister,
-		me:                me,
-		isLeader:          false,
-		currentTerm:       0,
-		votedFor:          -1,
-		commitIndex:       0,
-		lastApplied:       0,
-		matchIndex:        make([]int, len(peers)),
-		nextIndex:         make([]int, len(peers)),
-		applyCh:           applyCh,
-		closeCh:           make(chan struct{}),
-		voteCh:            make(chan bool, 1),
-		appendEntryCh:     make(chan bool, 1),
-		heartBeatCh:       make(chan bool, 1),
-		snapshotCh:        make(chan bool, 1),
-		applySnapshotCh:   make(chan bool, 1),
-		applyRoutineCh:    make(chan bool, 1),
-		snapshot:          make([]byte, 0),
-		snapshotIndex:     0,
-		snapshotTerm:      0,
-		maxraftstate:      0,
-		snapshotRoutineCh: make(chan bool, 1),
-		kvSnapshotCh:      make(chan []byte, 1),
+		peers:           peers,
+		persister:       persister,
+		me:              me,
+		isLeader:        false,
+		currentTerm:     0,
+		votedFor:        -1,
+		commitIndex:     0,
+		lastApplied:     0,
+		matchIndex:      make([]int, len(peers)),
+		nextIndex:       make([]int, len(peers)),
+		applyCh:         applyCh,
+		closeCh:         make(chan struct{}),
+		voteCh:          make(chan bool, 1),
+		appendEntryCh:   make(chan bool, 1),
+		heartBeatCh:     make(chan bool, 1),
+		snapshotCh:      make(chan bool, 1),
+		applySnapshotCh: make(chan bool, 1),
+		applyRoutineCh:  make(chan bool, 1),
+		snapshot:        make([]byte, 0),
+		snapshotIndex:   0,
+		snapshotTerm:    0,
 	}
 
 	// initialize from state persisted before a crash
@@ -1098,6 +1055,5 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// start apply routine watch commitIndex
 	go rf.applyRoutine()
 
-	go rf.snapshotRoutine()
 	return rf
 }
