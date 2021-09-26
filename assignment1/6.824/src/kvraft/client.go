@@ -60,10 +60,13 @@ func (ck *Clerk) Get(key string) string {
 			Err:   "",
 			Value: "",
 		}
+		DPrintf("clerk start Get args:%v ", args)
+
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.Get", &args, &reply)
 		// ou will have to modify this function.
 		ck.mu.Lock()
 		if !ok || reply.Err == "" {
+			DPrintf("clerkId:%d, timeout, prev:%d ok:%v, err:%v\n", ck.clerkId, ck.prevLeaderId, ok, reply.Err)
 			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
 			continue
 		}
@@ -113,11 +116,13 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 		reply := PutAppendReply{
 			Err: "",
 		}
+		DPrintf("clerk start PutAppend args:%v ", args)
+
 		ok := ck.servers[ck.prevLeaderId].Call("KVServer.PutAppend", &args, &reply)
 		// You will have to modify this function.
 		ck.mu.Lock()
 		if !ok || reply.Err == "" {
-			DPrintf("clerkId:%d, timeout, prev:%d\n", ck.clerkId, ck.prevLeaderId)
+			DPrintf("clerkId:%d, timeout, prev:%d ok:%v, err:%v\n", ck.clerkId, ck.prevLeaderId, ok, reply.Err)
 			ck.prevLeaderId = (ck.prevLeaderId + 1) % len(ck.servers)
 			continue
 		}
@@ -136,7 +141,9 @@ func (ck *Clerk) PutAppend(key string, value string, op string) {
 
 func (ck *Clerk) Put(key string, value string) {
 	ck.PutAppend(key, value, "Put")
+	DPrintf("put api ok %s, %s\n", key, value)
 }
 func (ck *Clerk) Append(key string, value string) {
 	ck.PutAppend(key, value, "Append")
+	DPrintf("append api ok %s, %s\n", key, value)
 }

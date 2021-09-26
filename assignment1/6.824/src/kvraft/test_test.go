@@ -2,6 +2,7 @@ package kvraft
 
 import (
 	"6.824/porcupine"
+	"log"
 )
 import "6.824/models"
 import "testing"
@@ -269,8 +270,9 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 				}
 				nv := "x " + strconv.Itoa(cli) + " " + strconv.Itoa(j) + " y"
 				if (rand.Int() % 1000) < 500 {
-					// log.Printf("%d: client new append %v\n", cli, nv)
+					log.Printf("%d: client new append %v\n", cli, nv)
 					Append(cfg, myck, key, nv, opLog, cli)
+					log.Printf("%d: client new append success%v\n", cli, nv)
 					if !randomkeys {
 						last = NextValue(last, nv)
 					}
@@ -285,7 +287,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 					v := Get(cfg, myck, key, opLog, cli)
 					// the following check only makes sense when we're not using random keys
 					if !randomkeys && v != last {
-						t.Fatalf("get wrong value, key %v, wanted:\n%v\n, got\n%v\n", key, last, v)
+						t.Fatalf("client:%d, get wrong value, key %v, wanted:\n%v\n, got\n%v\n", cli, key, last, v)
 					}
 				}
 			}
@@ -298,7 +300,8 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 		}
 		time.Sleep(5 * time.Second)
 
-		atomic.StoreInt32(&done_clients, 1)     // tell clients to quit
+		atomic.StoreInt32(&done_clients, 1) // tell clients to quit
+		log.Printf("quit witout finish\n")
 		atomic.StoreInt32(&done_partitioner, 1) // tell partitioner to quit
 
 		if partitions {
@@ -329,7 +332,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			cfg.ConnectAll()
 		}
 
-		// log.Printf("wait for clients\n")
+		log.Printf("wait for clients\n")
 		for i := 0; i < nclients; i++ {
 			// log.Printf("read from clients %d\n", i)
 			j := <-clnts[i]
@@ -337,7 +340,7 @@ func GenericTest(t *testing.T, part string, nclients int, nservers int, unreliab
 			// 	log.Printf("Warning: client %d managed to perform only %d put operations in 1 sec?\n", i, j)
 			// }
 			key := strconv.Itoa(i)
-			// log.Printf("Check %v for client %d\n", j, i)
+			log.Printf("Check %v for client %d\n", j, i)
 			v := Get(cfg, ck, key, opLog, 0)
 			if !randomkeys {
 				checkClntAppends(t, i, v, j)

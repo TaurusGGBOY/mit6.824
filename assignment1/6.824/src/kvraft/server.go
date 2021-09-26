@@ -7,7 +7,6 @@ import (
 	"bytes"
 	"errors"
 	"log"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -123,7 +122,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 }
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
-	DPrintf("goroutine:%d", runtime.NumGoroutine())
+	//DPrintf("goroutine:%d", runtime.NumGoroutine())
 	_, isleader := kv.rf.GetState()
 	if !isleader {
 		reply.Err = ErrWrongLeader
@@ -172,7 +171,7 @@ func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 			kv.mu.Unlock()
 			return
 		}
-		DPrintf("index:%d apply success and notify putAppend\n", index)
+		DPrintf("index:%d apply success and notify putAppend msg:%v\n", index, msg)
 		reply.Err = OK
 
 		kv.mu.Unlock()
@@ -211,11 +210,11 @@ func (kv *KVServer) killed() bool {
 
 // TODO listen applyCh
 func (kv *KVServer) listen() {
-	for {
+	for !kv.killed(){
 		for msg := range kv.applyCh {
 			// TODO snapshot
 			if msg.CommandValid {
-				DPrintf("Receive apply msg:%v\n", msg)
+				DPrintf("kv.me:%d Receive apply msg:%v\n", kv.me, msg)
 				op := msg.Command.(Op)
 				kv.mu.Lock()
 
@@ -242,19 +241,18 @@ func (kv *KVServer) listen() {
 
 				kv.newestIndex = max(kv.newestIndex, msg.CommandIndex)
 				kv.snapshotNow(msg)
-
 				kv.mu.Unlock()
 			} else if msg.SnapshotValid {
 				kv.mu.Lock()
-				DPrintf("Receive snapshot apply msg %v\n", msg)
-				if msg.SnapshotIndex >= kv.snapshotIndex {
-					if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
-						DPrintf("condition install succcess %v\n", msg)
-						kv.readSnapshot(msg.Snapshot)
-					} else {
-						DPrintf("condition install fail %v\n", msg)
-					}
+				//DPrintf("Receive snapshot apply msg %v\n", msg)
+				//if msg.SnapshotIndex > kv.newestIndex {
+				if kv.rf.CondInstallSnapshot(msg.SnapshotTerm, msg.SnapshotIndex, msg.Snapshot) {
+					DPrintf("me:%d condition install succcess \n", kv.me)
+					kv.readSnapshot(msg.Snapshot)
+				} else {
+					DPrintf("me:%d condition install fail\n", kv.me)
 				}
+				//}
 				kv.mu.Unlock()
 			}
 		}
@@ -298,8 +296,9 @@ func sendMsg(ch chan raft.ApplyMsg, msg raft.ApplyMsg) {
 func (kv *KVServer) generateSnapshot() []byte {
 	w := new(bytes.Buffer)
 	e := labgob.NewEncoder(w)
-	e.Encode(kv.snapshotIndex)
+	e.Encode(kv.newestIndex)
 	e.Encode(kv.db)
+	e.Encode(kv.lastTransId)
 	return w.Bytes()
 }
 
@@ -312,12 +311,15 @@ func (kv *KVServer) readSnapshot(data []byte) error {
 	d := labgob.NewDecoder(r)
 	var snapshotIndex int
 	var db map[string]string
-	if d.Decode(&snapshotIndex) != nil || d.Decode(&db) != nil {
+	var lastTransId map[int64]int
+	if d.Decode(&snapshotIndex) != nil || d.Decode(&db) != nil || d.Decode(&lastTransId) != nil {
 		return errors.New("read wrong")
 	} else {
-		DPrintf("recover snapshotIndex:%d", kv.snapshotIndex)
 		kv.snapshotIndex = snapshotIndex
 		kv.db = db
+		kv.lastTransId = lastTransId
+		kv.newestIndex = kv.snapshotIndex
+		DPrintf("recover snapshotIndex:%d newest:%d", kv.snapshotIndex, kv.newestIndex)
 		return nil
 	}
 }
@@ -347,10 +349,10 @@ func (kv *KVServer) snapshotNow(msg raft.ApplyMsg) {
 	if kv.shouldSnapshot() {
 		snapshot := kv.generateSnapshot()
 		if kv.rf.Snapshot(kv.newestIndex, snapshot) {
-			DPrintf("snapshot successs napshotindex:%v\n", msg)
+			DPrintf("me:%d snapshot success snapshotindex:%v\n", kv.me, msg)
 			kv.snapshotIndex = kv.newestIndex
 		} else {
-			DPrintf("snapshotfail snapshotindex:%v\n", msg)
+			DPrintf("me:%d snapshotfail snapshotindex:%v\n", kv.me, msg)
 		}
 	}
 }
@@ -391,7 +393,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 	if err != nil {
 		DPrintf("error %v", err)
 	}
-	kv.newestIndex = kv.snapshotIndex
 	go kv.listen()
 	return &kv
 }

@@ -21,6 +21,8 @@ import (
 	"6.824/labgob"
 	"bytes"
 	"errors"
+	"fmt"
+
 	//	"bytes"
 	"sync"
 	"sync/atomic"
@@ -248,13 +250,13 @@ func (rf *Raft) CondInstallSnapshot(lastIncludedTerm int, lastIncludedIndex int,
 	//runtime.GC()
 
 	// update commitindex and lastapplied
-	if rf.commitIndex < lastIncludedIndex {
-		rf.commitIndex = lastIncludedIndex
-	}
+	//if rf.commitIndex < lastIncludedIndex {
+	rf.commitIndex = lastIncludedIndex
+	//}
 
-	if rf.lastApplied < lastIncludedIndex {
-		rf.lastApplied = lastIncludedIndex
-	}
+	//if rf.lastApplied < lastIncludedIndex {
+	rf.lastApplied = lastIncludedIndex
+	//}
 
 	send(rf.snapshotCh)
 	return true
@@ -279,13 +281,13 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) bool {
 	rf.log = rf.log[rf.getIndex(index)+1:]
 	rf.snapshotIndex = index
 
-	if rf.commitIndex < index {
-		rf.commitIndex = index
-	}
+	//if rf.commitIndex < index {
+	rf.commitIndex = index
+	//}
 
-	if rf.lastApplied < index {
-		rf.lastApplied = index
-	}
+	//if rf.lastApplied < index {
+	rf.lastApplied = index
+	//}
 
 	// 8. Reset state machine using snapshot contents (and load snapshot’s cluster configuration)
 	send(rf.snapshotCh)
@@ -611,7 +613,7 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	index = rf.getLastIndex()
 	term = rf.currentTerm
 	send(rf.heartBeatCh)
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, in term:%d, start cmd %d\n", rf.me, rf.currentTerm, command)
 	return index, term, isLeader
 }
 
@@ -754,7 +756,7 @@ func (rf *Raft) sendRequestVoteToPeer(i int, args *RequestVoteArgs, reply *Reque
 }
 
 func (rf *Raft) becomeLeader() {
-	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
+	fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d become leader\n", rf.me)
 	rf.isLeader = true
 	for i := range rf.nextIndex {
 		rf.nextIndex[i] = rf.getLastIndex() + 1
