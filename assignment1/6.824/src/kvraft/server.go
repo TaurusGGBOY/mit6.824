@@ -6,13 +6,17 @@ import (
 	"6.824/raft"
 	"bytes"
 	"errors"
+	"fmt"
 	"log"
+	"os"
+	"runtime"
+	"runtime/pprof"
 	"sync"
 	"sync/atomic"
 	"time"
 )
 
-const Debug = true
+const Debug = false
 const ApplyTimeout = 800 * time.Millisecond
 
 func DPrintf(format string, a ...interface{}) (n int, err error) {
@@ -54,6 +58,8 @@ type KVServer struct {
 }
 
 func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
+	//DPrintf("goroutine:%d", runtime.NumGoroutine())
+
 	_, isleader := kv.rf.GetState()
 	if !isleader {
 		reply.Err = ErrWrongLeader
@@ -123,6 +129,7 @@ func (kv *KVServer) Get(args *GetArgs, reply *GetReply) {
 
 func (kv *KVServer) PutAppend(args *PutAppendArgs, reply *PutAppendReply) {
 	//DPrintf("goroutine:%d", runtime.NumGoroutine())
+
 	_, isleader := kv.rf.GetState()
 	if !isleader {
 		reply.Err = ErrWrongLeader
@@ -210,7 +217,7 @@ func (kv *KVServer) killed() bool {
 
 // TODO listen applyCh
 func (kv *KVServer) listen() {
-	for !kv.killed(){
+	for !kv.killed() {
 		for msg := range kv.applyCh {
 			// TODO snapshot
 			if msg.CommandValid {
@@ -240,7 +247,8 @@ func (kv *KVServer) listen() {
 				sendMsg(kv.notifyCh[msg.CommandIndex], msg)
 
 				kv.newestIndex = max(kv.newestIndex, msg.CommandIndex)
-				kv.snapshotNow(msg)
+				//send(kv.snapshotCh)
+				go kv.snapshotNow()
 				kv.mu.Unlock()
 			} else if msg.SnapshotValid {
 				kv.mu.Lock()
@@ -345,16 +353,50 @@ func min(a int, b int) int {
 	}
 }
 
-func (kv *KVServer) snapshotNow(msg raft.ApplyMsg) {
+func (kv *KVServer) snapshotNow() {
+	kv.mu.Lock()
 	if kv.shouldSnapshot() {
 		snapshot := kv.generateSnapshot()
-		if kv.rf.Snapshot(kv.newestIndex, snapshot) {
-			DPrintf("me:%d snapshot success snapshotindex:%v\n", kv.me, msg)
-			kv.snapshotIndex = kv.newestIndex
+		newestIndex := kv.newestIndex
+		kv.mu.Unlock()
+		if kv.rf.Snapshot(newestIndex, snapshot) {
+			DPrintf("me:%d snapshot success\n", kv.me)
+			kv.mu.Lock()
+			kv.snapshotIndex = newestIndex
 		} else {
-			DPrintf("me:%d snapshotfail snapshotindex:%v\n", kv.me, msg)
+			kv.mu.Lock()
+			DPrintf("me:%d snapshotfail\n", kv.me)
 		}
 	}
+	kv.mu.Unlock()
+}
+
+func (kv *KVServer) routineDetect() {
+	for !kv.killed() {
+		time.Sleep(50 * time.Millisecond)
+		if runtime.NumGoroutine() >= 5000 {
+			//time.Sleep(1000 * time.Millisecond)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " start\n")
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file0\n")
+			//这里是判断是否需要记录内存的逻辑
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file1\n")
+			memFile, err := os.Create("goroutine.prof")
+			if err != nil {
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file2\n")
+				log.Println(err)
+			} else {
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file3\n")
+				log.Println("end write heap profile....")
+				pprof.Lookup("goroutine").WriteTo(memFile, 0)
+				//pprof.WriteHeapProfile(memFile)
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " end write\n")
+				defer memFile.Close()
+			}
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05") + " write file5\n")
+			panic("panic")
+		}
+	}
+
 }
 
 //
@@ -394,5 +436,6 @@ func StartKVServer(servers []*labrpc.ClientEnd, me int, persister *raft.Persiste
 		DPrintf("error %v", err)
 	}
 	go kv.listen()
+	//go kv.routineDetect()
 	return &kv
 }

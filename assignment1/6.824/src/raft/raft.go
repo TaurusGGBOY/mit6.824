@@ -359,7 +359,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		send(rf.voteCh)
 		rf.votedFor = args.CandidateId
 		ifPersist = true
-		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my term:%d, my index:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.getByIndex(rf.getLastIndex()).Term, rf.getLastIndex())
+		fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d vote to candidate:%d, can lastterm:%d, can lastindex:%d, my lastterm:%d, my lastindex:%d\n", rf.me, args.CandidateId, args.LastLogTerm, args.LastLogIndex, rf.getByIndex(rf.getLastIndex()).Term, rf.getLastIndex())
 		return
 	}
 	reply.VoteGranted = false
@@ -698,7 +698,10 @@ func (rf *Raft) startSelection() {
 			continue
 		}
 		go func(i int) {
-			reply := RequestVoteReply{}
+			reply := RequestVoteReply{
+				Term:        -1,
+				VoteGranted: false,
+			}
 			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send request vote to %d for term %d,args:%v\n", rf.me, i, args.Term, args)
 			rf.sendRequestVoteToPeer(i, &args, &reply)
 			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d get reply waiting for lock args:%v, reply:%v\n", rf.me, args, reply)
@@ -780,7 +783,7 @@ func (rf *Raft) syncLogTicker() {
 		}
 		rf.mu.Unlock()
 
-		go rf.sendAllHeartbeat()
+		rf.sendAllHeartbeat()
 
 		select {
 		case <-rf.heartBeatCh:
@@ -792,9 +795,9 @@ func (rf *Raft) syncLogTicker() {
 }
 
 func (rf *Raft) sendAllHeartbeat() {
-	rf.mu.Lock()
+	//rf.mu.Lock()
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send heartbeat to all with isleader:%v log\n", rf.me, rf.isLeader)
-	rf.mu.Unlock()
+	//rf.mu.Unlock()
 
 	for i, peer := range rf.peers {
 		if i == rf.me {
@@ -820,6 +823,7 @@ func (rf *Raft) sendSnapshotToPeer(i int, peer *labrpc.ClientEnd) {
 	}
 
 	reply := InstallSnapshotReply{
+		Term: -1,
 	}
 
 	rf.mu.Unlock()
@@ -865,7 +869,12 @@ func (rf *Raft) sendHeartbeatToPeer(i int, peer *labrpc.ClientEnd) {
 	}
 
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" %d send log to %d, start with %d, term:%d, isleader:%v, canIn:%v\n", rf.me, i, rf.nextIndex[i], rf.currentTerm, rf.isLeader, rf.canIn[i])
-	reply := AppendEntriesReply{}
+	reply := AppendEntriesReply{
+		Term:          -1,
+		Success:       false,
+		ConflictTerm:  -1,
+		ConflictIndex: -1,
+	}
 
 	//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" i:%d send heartbeat ok:%v, reply success:%v, with reply:%v\n", i, ok, reply.Success, reply)
 	rf.mu.Unlock()
@@ -933,7 +942,7 @@ func (rf *Raft) updateMatchIndex(i int, index int) {
 			}
 			if count > len(rf.peers)/2 {
 				rf.commitIndex++
-				//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex to %d and want to apply\n", rf.me, rf.commitIndex)
+				fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%d, update commitIndex to %d and want to apply matchIndex:%v\n", rf.me, rf.commitIndex, rf.matchIndex)
 				ifPersist = true
 				// apply is end state, commit is not
 				send(rf.applyRoutineCh)
@@ -980,19 +989,23 @@ func (rf *Raft) applyRoutine() {
 		}
 		rf.mu.Lock()
 		//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" leader:%v me:%d, start to apply, rf.lastApplied:%d, rf.commitIndex:%d, rf.lastIndex:%d\n", rf.isLeader, rf.me, rf.lastApplied, rf.commitIndex, rf.getLastIndex())
+		haveApply := false
 		for rf.commitIndex > rf.lastApplied && rf.lastApplied+1 <= rf.getLastIndex() {
 			applyMsg := ApplyMsg{
 				CommandValid: true,
 				CommandIndex: rf.lastApplied + 1,
 				Command:      rf.getByIndex(rf.lastApplied + 1).Command,
 			}
-			//fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d send applymsg:%v\n", rf.me, applyMsg)
+			fmt.Printf(time.Now().Format("2006-01-02 15:04:05")+" me:%d send applymsg:%v\n", rf.me, applyMsg)
 			rf.mu.Unlock()
 			rf.applyCh <- applyMsg
 			rf.mu.Lock()
 			if rf.lastApplied+1 == applyMsg.CommandIndex {
 				rf.lastApplied++
 			}
+			haveApply = true
+		}
+		if haveApply {
 			send(rf.applySnapshotCh)
 			send(rf.heartBeatCh)
 		}
