@@ -83,11 +83,6 @@ func ihash(key string) int {
 // TODO
 func Worker(mapf func(string, string) []KeyValue,
 	reducef func(string, []string) string) {
-
-	// Your worker implementation here.
-	// TODO 向coordinator申请任务 所以要带上uuid？
-	// TODO 自己写rpc
-	// 然后运行map任务？但是reduce任务？
 	w := MapAndReduceWorker{}
 	w.Mapf = mapf
 	w.Reducef = reducef
@@ -95,9 +90,6 @@ func Worker(mapf func(string, string) []KeyValue,
 	w.register()
 	// 运行
 	w.run()
-	// uncomment to send the Example RPC to the coordinator.
-	//CallExample()
-
 }
 
 func (w *MapAndReduceWorker) register() {

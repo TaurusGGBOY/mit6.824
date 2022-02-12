@@ -121,7 +121,6 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) Register(args *RequestWorker, reply *RequestWorker) error {
-	// TODO 竞争
 	lock.Lock()
 	defer lock.Unlock()
 	reply.Id = c.assignWorkerID
@@ -163,14 +162,8 @@ func (c *Coordinator) Done() bool {
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // NReduce is the number of reduce tasks to use.
-//
-// TODO 输入是一个文件列表和reduce任务数量？ 返回一个Coordinator
-// 是我这边coordinator进行分割？
-// 还是说这个已经分割好了 直接可以分发给worker？
 func MakeCoordinator(files []string, nReduce int) *Coordinator {
 	c := Coordinator{}
-
-	// Your code here.
 	c.singleFileWordNumber = 4000
 	c.reduceTaskNumber = nReduce
 	c.totalMapTasks = len(files)
@@ -185,59 +178,10 @@ func MakeCoordinator(files []string, nReduce int) *Coordinator {
 		c.mapTasks[i] = file
 	}
 
-	// 对files里面的文件进行分割
-	// 记录第几个count
-	//count := 0
-	//oname := "split-"
-	//midWords := []string{}
-	//c.totalMapTasks = 0
-	//reduceFileName := ""
-	//
-	//for _, filename := range files {
-	//	file, err := os.Open(filename)
-	//	if err != nil {
-	//		//log.Fatalf("cannot open %v", filename)
-	//		continue
-	//	}
-	//	content, err := ioutil.ReadAll(file)
-	//	if err != nil {
-	//		//log.Fatalf("cannot read %v", filename)
-	//		continue
-	//	}
-	//	file.Close()
-	//	// function to detect word separators.
-	//	ff := func(r rune) bool { return !unicode.IsLetter(r) }
-	//	// split contents into an array of words.
-	//	words := strings.FieldsFunc(string(content), ff)
-	//
-	//	// 将每个文件分成10个小块
-	//	for _, word := range words {
-	//		midWords = append(midWords, word)
-	//		if len(midWords) >= c.singleFileWordNumber {
-	//			c.totalMapTasks = (count - 1) / c.singleFileWordNumber
-	//			reduceFileName = oname + strconv.Itoa(c.totalMapTasks)
-	//			c.mapTasks[c.totalMapTasks] = reduceFileName
-	//			ofile, _ := os.Create(reduceFileName)
-	//			fmt.Fprintf(ofile, "%v ", midWords)
-	//			midWords = make([]string, 0)
-	//		}
-	//		count = count + 1
-	//	}
-	//
-	//}
-	//if len(midWords) >= 0 {
-	//	c.totalMapTasks = count / c.singleFileWordNumber
-	//	reduceFileName = oname + strconv.Itoa(c.totalMapTasks)
-	//	c.mapTasks[c.totalMapTasks] = reduceFileName
-	//	ofile, _ := os.Create(oname + strconv.Itoa(count/c.singleFileWordNumber))
-	//	fmt.Fprintf(ofile, "%v ", midWords)
-	//}
-	// 给reduce添加任务
 	for i := 0; i < nReduce; i++ {
 		c.reduceTasks[i] = "mr-reduce-" + strconv.Itoa(i)
 	}
-	//log.Printf("mapTask有任务：%d,reduceTask有任务:%d", len(c.mapTasks), len(c.reduceTasks))
-	//log.Printf("开始监听……")
+
 	c.server()
 	return &c
 }
